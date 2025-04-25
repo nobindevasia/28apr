@@ -1,0 +1,11 @@
+﻿using D2G.Iris.ML.Core.Enums;
+using D2G.Iris.ML.Core.Models;
+using Microsoft.ML;
+
+namespace D2G.Iris.ML.Interfaces
+{
+    public interface ITrainerFactory
+    {
+        IEstimator<ITransformer> GetTrainer(ModelType modelType, TrainingParameters parameters);
+    }
+}
