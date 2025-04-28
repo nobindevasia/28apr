@@ -20,6 +20,13 @@ namespace D2G.Iris.ML.Training
             _trainerFactory = trainerFactory;
         }
 
+        private class ModelInput
+        {
+            [VectorType]
+            public float[] Features { get; set; }
+            public float Label { get; set; }
+        }
+
         public async Task<ITransformer> TrainModel(
             MLContext mlContext,
             IDataView dataView,
@@ -32,12 +39,40 @@ namespace D2G.Iris.ML.Training
                 Console.WriteLine($"\nStarting regression model training using {config.TrainingParameters.Algorithm}...");
                 Console.WriteLine($"Selected features: {string.Join(", ", featureNames)}");
 
-                // Create initial pipeline to extract features and label
-                var dataPipeline = mlContext.Transforms
-                    .CopyColumns("Label", config.TargetField)
-                    .Append(mlContext.Transforms.Concatenate("Features", featureNames));
+                // Copy column transformation for the label
+                var labelPipeline = mlContext.Transforms.CopyColumns("Label", config.TargetField);
+                var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
 
-                var transformedData = dataPipeline.Fit(dataView).Transform(dataView);
+                // Check if we have the 'Features' column already - this happens with PCA feature selection
+                bool hasPrecomputedFeatures = labeledData.Schema.GetColumnOrNull("Features").HasValue;
+                IDataView transformedData;
+
+                if (!hasPrecomputedFeatures)
+                {
+                    Console.WriteLine("Creating feature vector from individual feature columns...");
+                    // Create the feature vector from individual columns
+                    var featurePipeline = mlContext.Transforms.Concatenate("Features", featureNames);
+                    transformedData = featurePipeline.Fit(labeledData).Transform(labeledData);
+                }
+                else
+                {
+                    Console.WriteLine("Using precomputed feature vector...");
+                    transformedData = labeledData;
+                }
+
+                // Print schema to debug
+                Console.WriteLine("\nData schema after transformation:");
+                var previewCount = Math.Min(5, (int)(transformedData.GetRowCount() ?? 0));
+                if (previewCount > 0)
+                {
+                    var featuresType = transformedData.Schema["Features"].Type;
+                    Console.WriteLine($"Features column type: {featuresType}");
+
+                    if (featuresType is VectorDataViewType vectorType)
+                    {
+                        Console.WriteLine($"Features vector size: {vectorType.Size}");
+                    }
+                }
 
                 // Split data
                 Console.WriteLine("\nSplitting data into training and test sets...");
@@ -79,6 +114,14 @@ namespace D2G.Iris.ML.Training
                 var modelPath = $"Regression_{config.TrainingParameters.Algorithm}_Model.zip";
                 mlContext.Model.Save(model, transformedData.Schema, modelPath);
                 Console.WriteLine($"\nModel saved to: {modelPath}");
+
+                // Save model info
+                await ModelHelper.CreateModelInfo<RegressionMetrics, float>(
+                    metrics,
+                    dataView,
+                    featureNames,
+                    config,
+                    processedData);
 
                 return model;
             }

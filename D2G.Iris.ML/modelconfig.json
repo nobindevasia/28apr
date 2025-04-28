@@ -2,8 +2,8 @@
   "modelConfig": {
     "author": "Nobin Devasia",
     "description": "Model for Agenitor 408",
-    "modelType": "MultiClassClassification",
-    "targetField": "Label",
+    "modelType": "Regression",
+    "targetField": "ActivePower",
 
     "database": {
       "server": "sim-01-02",
@@ -14,7 +14,7 @@
     },
 
     "dataBalancing": {
-      "method": "Smote",
+      "method": "None",
       "executionOrder": 2,
       "kNeighbors": 1,
       "undersamplingRatio": 0.9,
