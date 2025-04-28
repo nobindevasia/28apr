@@ -79,6 +79,14 @@ namespace D2G.Iris.ML.Training
                 // Print metrics using ConsoleHelper
                 ConsoleHelper.PrintBinaryClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
 
+                // Save model information using ModelHelper
+                await ModelHelper.CreateModelInfo<BinaryClassificationMetrics, float>(
+                metrics,
+                dataView,
+                featureNames,
+                config,
+                processedData);
+
                 // Save model
                 var modelPath = $"BinaryClassification_{config.TrainingParameters.Algorithm}_Model.zip";
                 mlContext.Model.Save(model, typedData.Schema, modelPath);

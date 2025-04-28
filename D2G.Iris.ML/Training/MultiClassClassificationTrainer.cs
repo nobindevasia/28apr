@@ -107,6 +107,14 @@ namespace D2G.Iris.ML.Training
                 // Use ConsoleHelper to print metrics
                 ConsoleHelper.PrintMultiClassClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
 
+                // Save model information using ModelHelper
+                await ModelHelper.CreateModelInfo<MulticlassClassificationMetrics, float>(
+    metrics,
+    dataView,
+    featureNames,
+    config,
+    processedData);
+
                 // 8) Save
                 var modelPath = $"MultiClassClassification_{config.TrainingParameters.Algorithm}_Model.zip";
                 mlContext.Model.Save(model, fixedData.Schema, modelPath);

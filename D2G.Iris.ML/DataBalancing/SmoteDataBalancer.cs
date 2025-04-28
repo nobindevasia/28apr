@@ -23,7 +23,6 @@ namespace D2G.Iris.ML.DataBalancing
 
             try
             {
-                // Ensure we have a Features column
                 IDataView preparedData = data;
                 if (data.Schema.GetColumnOrNull("Features") == null)
                 {

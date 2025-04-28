@@ -74,6 +74,13 @@ namespace D2G.Iris.ML.Training
                 // Print metrics using ConsoleHelper
                 ConsoleHelper.PrintRegressionMetrics(config.TrainingParameters.Algorithm, metrics);
 
+                // Save model information using ModelHelper
+                await ModelHelper.CreateModelInfo<RegressionMetrics, float>(
+                metrics,
+                dataView,
+                featureNames,
+                config,
+                processedData);
                 // Save model
                 var modelPath = $"Regression_{config.TrainingParameters.Algorithm}_Model.zip";
                 mlContext.Model.Save(model, transformedData.Schema, modelPath);
