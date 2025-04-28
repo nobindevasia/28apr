@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.ML;
 using D2G.Iris.ML.Core.Enums;
-using D2G.Iris.ML.Training;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.Training
 {
@@ -16,8 +16,7 @@ namespace D2G.Iris.ML.Training
             _trainerFactory = new TrainerFactory(mlContext);
         }
 
-        // Change return type to match what we're actually returning
-        public object CreateTrainer(ModelType modelType)
+        public IModelTrainer CreateTrainer(ModelType modelType)
         {
             return modelType switch
             {

@@ -5,11 +5,12 @@ using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Models;
 using D2G.Iris.ML.Training;
+using D2G.Iris.ML.Core.Interfaces;
 using D2G.Iris.ML.Utils;
 
 namespace D2G.Iris.ML.Training
 {
-    public class BinaryClassificationTrainer
+    public class BinaryClassificationTrainer : IModelTrainer
     {
         private readonly MLContext _mlContext;
         private readonly TrainerFactory _trainerFactory;

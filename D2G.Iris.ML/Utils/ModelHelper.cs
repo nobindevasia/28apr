@@ -166,10 +166,6 @@ namespace D2G.Iris.ML.Utils
                             writer.WriteLine($"Multicollinearity Threshold: {config.FeatureEngineering.MulticollinearityThreshold:F2}");
                             writer.WriteLine($"Max Features: {config.FeatureEngineering.MaxFeatures}");
                             break;
-                        case FeatureSelectionMethod.Forward:
-                            writer.WriteLine($"Max Features: {config.FeatureEngineering.MaxFeatures}");
-                            writer.WriteLine($"Min Improvement: {config.FeatureEngineering.MinImprovement:F2}");
-                            break;
                     }
 
                     if (!string.IsNullOrEmpty(processedData.FeatureSelectionReport))

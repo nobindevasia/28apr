@@ -71,13 +71,6 @@ namespace D2G.Iris.ML.Configuration
                         throw new ArgumentException("Number of components must be greater than 0 for PCA");
                     break;
 
-                case Core.Enums.FeatureSelectionMethod.Forward:
-                    if (config.MaxFeatures <= 0)
-                        throw new ArgumentException("Max features must be greater than 0 for Forward Selection");
-                    if (config.MinImprovement <= 0)
-                        throw new ArgumentException("Minimum improvement must be greater than 0 for Forward Selection");
-                    break;
-
                 case Core.Enums.FeatureSelectionMethod.Correlation:
                     if (config.MulticollinearityThreshold <= 0 || config.MulticollinearityThreshold >= 1)
                         throw new ArgumentException("Multicollinearity threshold must be between 0 and 1 for Correlation Selection");

@@ -5,10 +5,11 @@ using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Models;
 using D2G.Iris.ML.Utils;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.Training
 {
-    public class RegressionTrainer
+    public class RegressionTrainer : IModelTrainer
     {
         private readonly MLContext _mlContext;
         private readonly TrainerFactory _trainerFactory;

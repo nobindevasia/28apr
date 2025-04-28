@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using D2G.Iris.ML.Configuration;
 using D2G.Iris.ML.Data;
 using D2G.Iris.ML.Training;
-using D2G.Iris.ML.Core.Enums;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML
 {
@@ -33,7 +33,6 @@ namespace D2G.Iris.ML
                     .Select(f => f.Name)
                     .ToArray();
 
-                // Create ML.NET context with fixed seed for reproducibility
                 var mlContext = new MLContext(seed: 42);
 
                 Console.WriteLine("Loading data...");
@@ -54,48 +53,19 @@ namespace D2G.Iris.ML
                     rawData,
                     enabledFields,
                     config,
-                    sqlHandler);  // Added sqlHandler parameter here
+                    sqlHandler); 
 
                 // Train the model
                 Console.WriteLine("Training model...");
                 var modelTrainerFactory = new ModelTrainerFactory(mlContext);
                 var modelTrainer = modelTrainerFactory.CreateTrainer(config.ModelType);
 
-                switch (config.ModelType)
-                {
-                    case ModelType.BinaryClassification:
-                        var binaryTrainer = (BinaryClassificationTrainer)modelTrainer;
-                        await binaryTrainer.TrainModel(
-                            mlContext,
-                            processedData.Data,
-                            processedData.FeatureNames,
-                            config,
-                            processedData);
-                        break;
-
-                    case ModelType.MultiClassClassification:
-                        var multiClassTrainer = (MultiClassClassificationTrainer)modelTrainer;
-                        await multiClassTrainer.TrainModel(
-                            mlContext,
-                            processedData.Data,
-                            processedData.FeatureNames,
-                            config,
-                            processedData);
-                        break;
-
-                    case ModelType.Regression:
-                        var regressionTrainer = (RegressionTrainer)modelTrainer;
-                        await regressionTrainer.TrainModel(
-                            mlContext,
-                            processedData.Data,
-                            processedData.FeatureNames,
-                            config,
-                            processedData);
-                        break;
-
-                    default:
-                        throw new ArgumentException($"Unsupported model type: {config.ModelType}");
-                }
+                await modelTrainer.TrainModel(
+                    mlContext,
+                    processedData.Data,
+                    processedData.FeatureNames,
+                    config,
+                    processedData);
 
                 Console.WriteLine("Pipeline completed successfully.");
             }
