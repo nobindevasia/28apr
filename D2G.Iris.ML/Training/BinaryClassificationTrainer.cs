@@ -32,43 +32,35 @@ namespace D2G.Iris.ML.Training
 
             try
             {
-                // Convert to strongly-typed data with fixed schema
                 var rows = mlContext.Data.CreateEnumerable<FeatureVector>(dataView, reuseRowObject: false)
                     .Select(row => new BinaryRow
                     {
-                        Features = row.Features.Take(featureNames.Length).ToArray(), // Ensure fixed length
-                        Label = row.Label > 0 // Convert to boolean for binary classification
+                        Features = row.Features.Take(featureNames.Length).ToArray(), 
+                        Label = row.Label > 0 
                     })
                     .ToList();
 
-                // Create schema with fixed vector size
                 var schema = SchemaDefinition.Create(typeof(BinaryRow));
                 schema["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureNames.Length);
 
-                // Load data with fixed schema
                 var typedData = mlContext.Data.LoadFromEnumerable(rows, schema);
 
-                // Split data
                 var dataSplit = mlContext.Data.TrainTestSplit(
                     typedData,
                     testFraction: config.TrainingParameters.TestFraction,
                     seed: 42);
 
-                // Get trainer
                 var trainer = _trainerFactory.GetTrainer(
                     config.ModelType,
                     config.TrainingParameters);
 
-                // Create training pipeline
                 var pipeline = mlContext.Transforms
                     .NormalizeMinMax("Features")
                     .Append(trainer)
                     .Append(mlContext.Transforms.CopyColumns("Probability", "Score"));
 
-                // Train model
                 var model = await Task.Run(() => pipeline.Fit(dataSplit.TrainSet));
 
-                // Evaluate model
                 Console.WriteLine("Evaluating model...");
                 var predictions = model.Transform(dataSplit.TestSet);
                 var metrics = mlContext.BinaryClassification.Evaluate(
@@ -77,10 +69,9 @@ namespace D2G.Iris.ML.Training
                     scoreColumnName: "Score",
                     predictedLabelColumnName: "PredictedLabel");
 
-                // Print metrics using ConsoleHelper
                 ConsoleHelper.PrintBinaryClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
+                Console.WriteLine($"Confusion Matrix:\n{metrics.ConfusionMatrix.GetFormattedConfusionTable()}");
 
-                // Save model information using ModelHelper
                 await ModelHelper.CreateModelInfo<BinaryClassificationMetrics, float>(
                 metrics,
                 dataView,
@@ -88,7 +79,6 @@ namespace D2G.Iris.ML.Training
                 config,
                 processedData);
 
-                // Save model
                 var modelPath = $"BinaryClassification_{config.TrainingParameters.Algorithm}_Model.zip";
                 mlContext.Model.Save(model, typedData.Schema, modelPath);
                 Console.WriteLine($"Model saved to: {modelPath}");

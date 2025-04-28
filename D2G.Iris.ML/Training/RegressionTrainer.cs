@@ -39,18 +39,15 @@ namespace D2G.Iris.ML.Training
                 Console.WriteLine($"\nStarting regression model training using {config.TrainingParameters.Algorithm}...");
                 Console.WriteLine($"Selected features: {string.Join(", ", featureNames)}");
 
-                // Copy column transformation for the label
                 var labelPipeline = mlContext.Transforms.CopyColumns("Label", config.TargetField);
                 var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
 
-                // Check if we have the 'Features' column already - this happens with PCA feature selection
                 bool hasPrecomputedFeatures = labeledData.Schema.GetColumnOrNull("Features").HasValue;
                 IDataView transformedData;
 
                 if (!hasPrecomputedFeatures)
                 {
-                    Console.WriteLine("Creating feature vector from individual feature columns...");
-                    // Create the feature vector from individual columns
+
                     var featurePipeline = mlContext.Transforms.Concatenate("Features", featureNames);
                     transformedData = featurePipeline.Fit(labeledData).Transform(labeledData);
                 }
@@ -60,32 +57,26 @@ namespace D2G.Iris.ML.Training
                     transformedData = labeledData;
                 }
 
-                // Print schema to debug
-                Console.WriteLine("\nData schema after transformation:");
-                var previewCount = Math.Min(5, (int)(transformedData.GetRowCount() ?? 0));
-                if (previewCount > 0)
-                {
-                    var featuresType = transformedData.Schema["Features"].Type;
-                    Console.WriteLine($"Features column type: {featuresType}");
 
-                    if (featuresType is VectorDataViewType vectorType)
-                    {
-                        Console.WriteLine($"Features vector size: {vectorType.Size}");
-                    }
-                }
+                //Console.WriteLine("\nData schema after transformation:");
+                //var previewCount = Math.Min(5, (int)(transformedData.GetRowCount() ?? 0));
+                //if (previewCount > 0)
+                //{
+                //    var featuresType = transformedData.Schema["Features"].Type;
+                //    Console.WriteLine($"Features column type: {featuresType}");
 
-                // Split data
-                Console.WriteLine("\nSplitting data into training and test sets...");
+                //    if (featuresType is VectorDataViewType vectorType)
+                //    {
+                //        Console.WriteLine($"Features vector size: {vectorType.Size}");
+                //    }
+                //}
+
                 var splitData = mlContext.Data.TrainTestSplit(
                     transformedData,
                     testFraction: config.TrainingParameters.TestFraction,
                     seed: 42);
 
-                Console.WriteLine($"Training set size: {splitData.TrainSet.GetRowCount():N0} rows");
-                Console.WriteLine($"Test set size: {splitData.TestSet.GetRowCount():N0} rows");
 
-                // Create training pipeline
-                Console.WriteLine("\nConfiguring training pipeline...");
                 var trainer = _trainerFactory.GetTrainer(
                     config.ModelType,
                     config.TrainingParameters);
@@ -95,27 +86,23 @@ namespace D2G.Iris.ML.Training
                     .AppendCacheCheckpoint(mlContext)
                     .Append(trainer);
 
-                // Train model with progress reporting
-                Console.WriteLine("\nTraining model...");
+
                 var trainStartTime = DateTime.Now;
                 var model = await Task.Run(() => pipeline.Fit(splitData.TrainSet));
                 var trainingTime = DateTime.Now - trainStartTime;
                 Console.WriteLine($"Training completed in {trainingTime.TotalSeconds:N1} seconds");
 
-                // Evaluate model
-                Console.WriteLine("\nEvaluating model...");
+
                 var predictions = model.Transform(splitData.TestSet);
                 var metrics = mlContext.Regression.Evaluate(predictions);
 
-                // Print metrics using ConsoleHelper
                 ConsoleHelper.PrintRegressionMetrics(config.TrainingParameters.Algorithm, metrics);
 
-                // Save model
                 var modelPath = $"Regression_{config.TrainingParameters.Algorithm}_Model.zip";
                 mlContext.Model.Save(model, transformedData.Schema, modelPath);
                 Console.WriteLine($"\nModel saved to: {modelPath}");
 
-                // Save model info
+             
                 await ModelHelper.CreateModelInfo<RegressionMetrics, float>(
                     metrics,
                     dataView,
