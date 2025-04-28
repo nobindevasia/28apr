@@ -18,7 +18,6 @@ namespace D2G.Iris.ML.Training
             _mlContext = mlContext;
             _trainerFactory = trainerFactory;
         }
-
         private class ModelInput
         {
             [VectorType]
@@ -34,7 +33,6 @@ namespace D2G.Iris.ML.Training
             ProcessedData processedData)
         {
             Console.WriteLine($"\nStarting multiclass classification model training using {config.TrainingParameters.Algorithm}...");
-            //Console.WriteLine($"Total samples: {processedData.BalancedSampleCount:N0}");
             Console.WriteLine($"Selected features: {string.Join(", ", featureNames)}");
 
             try
@@ -57,8 +55,6 @@ namespace D2G.Iris.ML.Training
 
                 var fixedData = mlContext.Data.LoadFromEnumerable(data, schema);
 
-                // 3) Split into train/test
-                Console.WriteLine("\nSplitting data into training and test sets...");
                 var splitData = mlContext.Data.TrainTestSplit(
                     fixedData,
                     testFraction: config.TrainingParameters.TestFraction,
@@ -107,13 +103,16 @@ namespace D2G.Iris.ML.Training
                 // Use ConsoleHelper to print metrics
                 ConsoleHelper.PrintMultiClassClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
 
+
+
                 // Save model information using ModelHelper
                 await ModelHelper.CreateModelInfo<MulticlassClassificationMetrics, float>(
-    metrics,
-    dataView,
-    featureNames,
-    config,
-    processedData);
+                metrics,
+                dataView,
+                featureNames,
+                config,
+                processedData);
+
 
                 // 8) Save
                 var modelPath = $"MultiClassClassification_{config.TrainingParameters.Algorithm}_Model.zip";
@@ -122,6 +121,7 @@ namespace D2G.Iris.ML.Training
 
                 return model;
             }
+
             catch (Exception ex)
             {
                 Console.WriteLine($"\nError during model training: {ex.Message}");

@@ -101,7 +101,7 @@ namespace D2G.Iris.ML.Data
                         dataTable.Columns.Add(feature, typeof(float));
                     }
 
-                    var targetColumnClrType = modelType switch
+                    Type targetColumnClrType = modelType switch
                     {
                         ModelType.BinaryClassification => typeof(bool),
                         ModelType.MultiClassClassification => typeof(int),
@@ -110,50 +110,122 @@ namespace D2G.Iris.ML.Data
                     };
                     dataTable.Columns.Add(targetField, targetColumnClrType);
 
+                    var targetColInfo = processedData.Schema.GetColumnOrNull(targetField);
+                    bool labelIsBoolean = false;
+                    bool labelIsLong = false;
+
+                    if (targetColInfo.HasValue)
+                    {
+                        labelIsBoolean = targetColInfo.Value.Type == BooleanDataViewType.Instance;
+                        labelIsLong = targetColInfo.Value.Type == NumberDataViewType.Int64;
+                    }
+
+                    bool useFeatureVector = false;
+                    var featuresColumn = processedData.Schema.GetColumnOrNull("Features");
+
+                    if (featuresColumn.HasValue && featuresColumn.Value.Type is VectorDataViewType)
+                    {
+                        bool hasSomeIndividualFeatures = false;
+                        foreach (var feature in featureNames)
+                        {
+                            if (processedData.Schema.GetColumnOrNull(feature).HasValue)
+                            {
+                                hasSomeIndividualFeatures = true;
+                                break;
+                            }
+                        }
+
+                        useFeatureVector = !hasSomeIndividualFeatures;
+                    }
+
                     using (var cursor = processedData.GetRowCursor(processedData.Schema))
                     {
                         while (cursor.MoveNext())
                         {
                             var row = dataTable.NewRow();
 
-                            // Handle features
-                            for (int i = 0; i < featureNames.Length; i++)
+                            if (useFeatureVector)
                             {
-                                var featureColumn = processedData.Schema.GetColumnOrNull(featureNames[i]);
-                                if (featureColumn.HasValue)
+                                var featuresGetter = cursor.GetGetter<VBuffer<float>>(featuresColumn.Value);
+                                VBuffer<float> features = default;
+                                featuresGetter(ref features);
+
+                                float[] featureValues = features.GetValues().ToArray();
+                                if (features.IsDense && featureValues.Length >= featureNames.Length)
                                 {
-                                    var getter = cursor.GetGetter<float>(featureColumn.Value);
-                                    float value = 0;
-                                    getter(ref value);
-                                    row[featureNames[i]] = value;
+                                    for (int i = 0; i < featureNames.Length; i++)
+                                    {
+                                        row[featureNames[i]] = featureValues[i];
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Warning: Feature vector is sparse or has wrong size. " +
+                                                     $"Expected {featureNames.Length}, got {featureValues.Length}");
+                                }
+                            }
+                            else
+                            {
+                                for (int i = 0; i < featureNames.Length; i++)
+                                {
+                                    var featureColumn = processedData.Schema.GetColumnOrNull(featureNames[i]);
+                                    if (featureColumn.HasValue)
+                                    {
+                                        var getter = cursor.GetGetter<float>(featureColumn.Value);
+                                        float value = 0;
+                                        getter(ref value);
+                                        row[featureNames[i]] = value;
+                                    }
+                                    else
+                                    {
+                                        row[featureNames[i]] = DBNull.Value;
+                                        Console.WriteLine($"Warning: Feature {featureNames[i]} not found in schema");
+                                    }
                                 }
                             }
 
-                            // Handle target field
                             var targetColumn = processedData.Schema.GetColumnOrNull(targetField);
                             if (targetColumn.HasValue)
                             {
                                 switch (modelType)
                                 {
                                     case ModelType.BinaryClassification:
-                                        var boolGetter = cursor.GetGetter<bool>(targetColumn.Value);
-                                        bool boolValue = false;
-                                        boolGetter(ref boolValue);
-                                        row[targetField] = boolValue;
+                                        if (labelIsBoolean)
+                                        {
+
+                                            var binaryGetter = cursor.GetGetter<bool>(targetColumn.Value);
+                                            bool binaryValue = false;
+                                            binaryGetter(ref binaryValue);
+                                            row[targetField] = binaryValue;
+                                        }
+                                        else if (labelIsLong)
+                                        {
+                                            var binaryLongGetter = cursor.GetGetter<long>(targetColumn.Value);
+                                            long binaryLongValue = 0;
+                                            binaryLongGetter(ref binaryLongValue);
+                                            row[targetField] = binaryLongValue > 0;
+                                        }
+                                        else
+                                        {
+                                            var binaryFloatGetter = cursor.GetGetter<float>(targetColumn.Value);
+                                            float binaryFloatValue = 0;
+                                            binaryFloatGetter(ref binaryFloatValue);
+                                            row[targetField] = binaryFloatValue > 0;
+                                        }
                                         break;
 
                                     case ModelType.MultiClassClassification:
-                                        var longGetter = cursor.GetGetter<long>(targetColumn.Value);
-                                        long longValue = 0;
-                                        longGetter(ref longValue);
-                                        row[targetField] = (int)longValue;
+                                        var multiClassGetter = cursor.GetGetter<long>(targetColumn.Value);
+                                        long multiClassValue = 0;
+                                        multiClassGetter(ref multiClassValue);
+                                        row[targetField] = (int)multiClassValue;
                                         break;
 
-                                    default:
-                                        var floatGetter = cursor.GetGetter<float>(targetColumn.Value);
-                                        float floatValue = 0;
-                                        floatGetter(ref floatValue);
-                                        row[targetField] = floatValue;
+                                    case ModelType.Regression:
+                                        var regressionGetter = cursor.GetGetter<float>(targetColumn.Value);
+                                        float regressionValue = 0;
+                                        regressionGetter(ref regressionValue);
+                                        row[targetField] = regressionValue;
                                         break;
                                 }
                             }

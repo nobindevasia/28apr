@@ -12,8 +12,16 @@ using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.Data
 {
-    public class DataProcessor 
+    public class DataProcessor
     {
+        private readonly DataBalancerFactory _dataBalancerFactory;
+        private readonly FeatureSelectorFactory _featureSelectorFactory;
+
+        public DataProcessor()
+        {
+            _dataBalancerFactory = new DataBalancerFactory();
+        }
+
         public async Task<ProcessedData> ProcessData(
             MLContext mlContext,
             IDataView rawData,
@@ -27,18 +35,15 @@ namespace D2G.Iris.ML.Data
             string[] currentFeatures = enabledFields.Where(f => f != config.TargetField).ToArray();
             string selectionReport = string.Empty;
 
-            // Original row count
             long originalCount = rawData.GetRowCount() ?? 0;
             long balancedCount = originalCount;
 
-            // Create initial feature vector if needed
             if (!rawData.Schema.GetColumnOrNull("Features").HasValue)
             {
                 var initialPipeline = mlContext.Transforms.Concatenate("Features", currentFeatures);
                 processedData = initialPipeline.Fit(rawData).Transform(rawData);
             }
 
-            // Determine execution order
             bool balancingFirst = config.DataBalancing.ExecutionOrder <= config.FeatureEngineering.ExecutionOrder;
 
             if (config.DataBalancing.Method != DataBalanceMethod.None &&
@@ -53,7 +58,6 @@ namespace D2G.Iris.ML.Data
             {
                 if (balancingFirst)
                 {
-                    // Data Balancing First
                     if (config.DataBalancing.Method != DataBalanceMethod.None)
                     {
                         var balanceResult = await ProcessDataBalancing(mlContext, processedData, currentFeatures, config);
@@ -61,7 +65,6 @@ namespace D2G.Iris.ML.Data
                         balancedCount = balanceResult.count;
                     }
 
-                    // Then Feature Selection
                     if (config.FeatureEngineering.Method != FeatureSelectionMethod.None)
                     {
                         var featureResult = await ProcessFeatureSelection(mlContext, processedData, currentFeatures, config);
@@ -72,7 +75,6 @@ namespace D2G.Iris.ML.Data
                 }
                 else
                 {
-                    // Feature Selection First
                     if (config.FeatureEngineering.Method != FeatureSelectionMethod.None)
                     {
                         var featureResult = await ProcessFeatureSelection(mlContext, processedData, currentFeatures, config);
@@ -80,8 +82,6 @@ namespace D2G.Iris.ML.Data
                         currentFeatures = featureResult.selectedFeatures;
                         selectionReport = featureResult.report;
                     }
-
-                    // Then Data Balancing
                     if (config.DataBalancing.Method != DataBalanceMethod.None)
                     {
                         var balanceResult = await ProcessDataBalancing(mlContext, processedData, currentFeatures, config);
@@ -90,7 +90,6 @@ namespace D2G.Iris.ML.Data
                     }
                 }
 
-                // Save processed data if output table is specified
                 if (!string.IsNullOrEmpty(config.Database.OutputTableName))
                 {
                     try
@@ -137,7 +136,7 @@ namespace D2G.Iris.ML.Data
             string[] features,
             ModelConfig config)
         {
-            var balancer = new SmoteDataBalancer();
+            var balancer = _dataBalancerFactory.CreateBalancer(config.DataBalancing.Method);
             var balancedData = await balancer.BalanceDataset(
                 mlContext,
                 data,
@@ -157,7 +156,9 @@ namespace D2G.Iris.ML.Data
             string[] features,
             ModelConfig config)
         {
-            var selector = new CorrelationFeatureSelector(mlContext);
+            var featureSelectorFactory = _featureSelectorFactory ?? new FeatureSelectorFactory(mlContext);
+            var selector = featureSelectorFactory.CreateSelector(config.FeatureEngineering.Method);
+
             var result = await selector.SelectFeatures(
                 mlContext,
                 data,

@@ -3,7 +3,6 @@
     public enum FeatureSelectionMethod
     {
         None,
-        Forward,
         Correlation,
         PCA
     }

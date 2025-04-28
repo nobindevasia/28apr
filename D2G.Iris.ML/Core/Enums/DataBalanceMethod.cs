@@ -3,7 +3,6 @@
     public enum DataBalanceMethod
     {
         None,
-        SMOTE,
-        ADASYN
+        SMOTE
     }
 }

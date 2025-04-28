@@ -22,7 +22,7 @@
     },
 
     "featureEngineering": {
-      "method": "None",
+      "method": "PCA",
       "executionOrder": 2,
       "numberOfComponents": 2,
       "maxFeatures": 2,

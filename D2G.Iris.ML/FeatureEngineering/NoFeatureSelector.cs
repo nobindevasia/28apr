@@ -37,7 +37,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                 _report.AppendLine($"- {feature}");
             }
 
-            // Create pipeline to concatenate features
             var pipeline = mlContext.Transforms
                 .Concatenate("Features", candidateFeatures);
 
