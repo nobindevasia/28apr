@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Models;
+using D2G.Iris.ML.Utils;
 
 namespace D2G.Iris.ML.Training
 {
@@ -73,7 +74,7 @@ namespace D2G.Iris.ML.Training
                 IEstimator<ITransformer> pipeline = mlContext.Transforms
                     .NormalizeMinMax("Features")
                     // This maps your int64 labels into a key type *called* "Label",
-                    // so the trainer’s default labelColumnName="Label" now finds a Key<UInt32>.
+                    // so the trainer's default labelColumnName="Label" now finds a Key<UInt32>.
                     .Append(mlContext.Transforms.Conversion
                         .MapValueToKey(outputColumnName: "Label", inputColumnName: "Label"))
                     .AppendCacheCheckpoint(mlContext);
@@ -103,7 +104,8 @@ namespace D2G.Iris.ML.Training
                 var metrics = mlContext.MulticlassClassification.Evaluate(
                     predictions);
 
-                PrintMetrics(metrics);
+                // Use ConsoleHelper to print metrics
+                ConsoleHelper.PrintMultiClassClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
 
                 // 8) Save
                 var modelPath = $"MultiClassClassification_{config.TrainingParameters.Algorithm}_Model.zip";
@@ -119,27 +121,6 @@ namespace D2G.Iris.ML.Training
                 if (ex.InnerException != null)
                     Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
                 throw;
-            }
-        }
-
-        private void PrintMetrics(MulticlassClassificationMetrics metrics)
-        {
-            Console.WriteLine("\nModel Evaluation Metrics:");
-            Console.WriteLine("--------------------------------");
-            Console.WriteLine($"Micro Accuracy:        {metrics.MicroAccuracy:F4}");
-            Console.WriteLine($"Macro Accuracy:        {metrics.MacroAccuracy:F4}");
-            Console.WriteLine($"Log Loss:              {metrics.LogLoss:F4}");
-            Console.WriteLine($"Log Loss Reduction:    {metrics.LogLossReduction:F4}");
-
-            Console.WriteLine("\nConfusion Matrix:");
-            Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
-
-            Console.WriteLine("\nPer-class Metrics:");
-            for (int i = 0; i < metrics.PerClassLogLoss.Count; i++)
-            {
-                Console.WriteLine($"\nClass {i}:");
-                Console.WriteLine($"  Log Loss   : {metrics.PerClassLogLoss[i]:F4}");
-       
             }
         }
     }

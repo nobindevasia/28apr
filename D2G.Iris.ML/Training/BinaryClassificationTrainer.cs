@@ -5,6 +5,7 @@ using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Models;
 using D2G.Iris.ML.Training;
+using D2G.Iris.ML.Utils;
 
 namespace D2G.Iris.ML.Training
 {
@@ -75,8 +76,8 @@ namespace D2G.Iris.ML.Training
                     scoreColumnName: "Score",
                     predictedLabelColumnName: "PredictedLabel");
 
-                // Print metrics
-                PrintMetrics(metrics);
+                // Print metrics using ConsoleHelper
+                ConsoleHelper.PrintBinaryClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
 
                 // Save model
                 var modelPath = $"BinaryClassification_{config.TrainingParameters.Algorithm}_Model.zip";
@@ -90,24 +91,6 @@ namespace D2G.Iris.ML.Training
                 Console.WriteLine($"Error during model training: {ex.Message}");
                 throw;
             }
-        }
-
-        private void PrintMetrics(BinaryClassificationMetrics metrics)
-        {
-            Console.WriteLine();
-            Console.WriteLine("Model Evaluation Metrics:");
-            Console.WriteLine("--------------------------------");
-            Console.WriteLine($"Accuracy: {metrics.Accuracy:F4}");
-            Console.WriteLine($"Area Under ROC Curve: {metrics.AreaUnderRocCurve:F4}");
-            Console.WriteLine($"Area Under PR Curve: {metrics.AreaUnderPrecisionRecallCurve:F4}");
-            Console.WriteLine($"F1 Score: {metrics.F1Score:F4}");
-            Console.WriteLine($"Positive Precision: {metrics.PositivePrecision:F4}");
-            Console.WriteLine($"Negative Precision: {metrics.NegativePrecision:F4}");
-            Console.WriteLine($"Positive Recall: {metrics.PositiveRecall:F4}");
-            Console.WriteLine($"Negative Recall: {metrics.NegativeRecall:F4}");
-            Console.WriteLine();
-            Console.WriteLine("Confusion Matrix:");
-            Console.WriteLine(metrics.ConfusionMatrix.GetFormattedConfusionTable());
         }
 
         private class BinaryRow

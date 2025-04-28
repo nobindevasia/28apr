@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Models;
+using D2G.Iris.ML.Utils;
 
 namespace D2G.Iris.ML.Training
 {
@@ -16,7 +17,7 @@ namespace D2G.Iris.ML.Training
         {
             _mlContext = mlContext;
             _trainerFactory = trainerFactory;
-        } 
+        }
 
         public async Task<ITransformer> TrainModel(
             MLContext mlContext,
@@ -70,8 +71,13 @@ namespace D2G.Iris.ML.Training
                 var predictions = model.Transform(splitData.TestSet);
                 var metrics = mlContext.Regression.Evaluate(predictions);
 
-                // Print metrics
-                PrintMetrics(metrics);
+                // Print metrics using ConsoleHelper
+                ConsoleHelper.PrintRegressionMetrics(config.TrainingParameters.Algorithm, metrics);
+
+                // Save model
+                var modelPath = $"Regression_{config.TrainingParameters.Algorithm}_Model.zip";
+                mlContext.Model.Save(model, transformedData.Schema, modelPath);
+                Console.WriteLine($"\nModel saved to: {modelPath}");
 
                 return model;
             }
@@ -85,17 +91,6 @@ namespace D2G.Iris.ML.Training
                 }
                 throw;
             }
-        }
-
-        private void PrintMetrics(RegressionMetrics metrics)
-        {
-            Console.WriteLine("\nModel Evaluation Metrics:");
-            Console.WriteLine("--------------------------------");
-            Console.WriteLine($"R²: {metrics.RSquared:F4}");
-            Console.WriteLine($"Mean Absolute Error: {metrics.MeanAbsoluteError:F4}");
-            Console.WriteLine($"Mean Squared Error: {metrics.MeanSquaredError:F4}");
-            Console.WriteLine($"Root Mean Squared Error: {metrics.RootMeanSquaredError:F4}");
-            Console.WriteLine($"Loss Function: {metrics.LossFunction:F4}");
         }
     }
 }

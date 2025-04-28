@@ -2,8 +2,8 @@
   "modelConfig": {
     "author": "Nobin Devasia",
     "description": "Model for Agenitor 408",
-    "modelType": "Regression",
-    "targetField": "ActivePower",
+    "modelType": "BinaryClassification",
+    "targetField": "Label",
 
     "database": {
       "server": "sim-01-02",
