@@ -44,6 +44,7 @@ namespace D2G.Iris.ML.FeatureEngineering
 
             try
             {
+                // Get data as enumerable with vectorized features
                 var rows = mlContext.Data.CreateEnumerable<FeatureRow>(
                     data, reuseRowObject: false).ToList();
 
@@ -52,6 +53,7 @@ namespace D2G.Iris.ML.FeatureEngineering
                     throw new InvalidOperationException("No valid feature data found");
                 }
 
+                // Calculate correlations with target for each feature
                 var targetCorrelations = new Dictionary<string, double>();
                 var targetValues = rows.Select(r => (double)r.Label).ToArray();
 
@@ -62,6 +64,7 @@ namespace D2G.Iris.ML.FeatureEngineering
                     targetCorrelations[candidateFeatures[i]] = correlation;
                 }
 
+                // Sort features by correlation
                 var sortedFeatures = targetCorrelations
                     .OrderByDescending(x => x.Value)
                     .ToList();
@@ -72,6 +75,7 @@ namespace D2G.Iris.ML.FeatureEngineering
                     _report.AppendLine($"{pair.Key,-40} | {pair.Value:F4}");
                 }
 
+                // Select features considering multicollinearity
                 var selectedFeatures = new List<string>();
                 var selectedIndices = new List<int>();
 
@@ -113,12 +117,14 @@ namespace D2G.Iris.ML.FeatureEngineering
                     _report.AppendLine($"- {feature} (correlation with target: {targetCorrelations[feature]:F4})");
                 }
 
+                // Create new feature vectors with only selected features
                 var selectedRows = rows.Select(row => new FeatureRow
                 {
                     Features = selectedIndices.Select(i => row.Features[i]).ToArray(),
                     Label = row.Label
                 }).ToList();
 
+                // Convert back to IDataView
                 var transformedData = mlContext.Data.LoadFromEnumerable(selectedRows);
 
                 return (transformedData, selectedFeatures.ToArray(), _report.ToString());

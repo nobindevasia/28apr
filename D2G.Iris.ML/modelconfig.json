@@ -10,7 +10,7 @@
       "database": "sql-iris-dev",
       "whereClause": "",
       "tableName": "ComputeData.MessageProb256_Ag408_dummy",
-      "outputTableName": ""
+      "outputTableName": "ComputeData.MessageProb256_Ag408_dummy_pr"
     },
 
     "dataBalancing": {
@@ -22,7 +22,7 @@
     },
 
     "featureEngineering": {
-      "method": "PCA",
+      "method": "Correlation",
       "executionOrder": 1,
       "numberOfComponents": 2,
       "maxFeatures": 2,
