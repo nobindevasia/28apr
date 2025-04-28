@@ -5,7 +5,7 @@ using D2G.Iris.ML.Core.Enums;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
-namespace D2G.Iris.ML.Interfaces
+namespace D2G.Iris.ML.Core.Interfaces
 {
     public interface IConfigManager
     {

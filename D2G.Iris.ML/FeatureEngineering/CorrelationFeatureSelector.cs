@@ -8,10 +8,11 @@ using Microsoft.ML.Data;
 using MathNet.Numerics.Statistics;
 using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.FeatureEngineering
 {
-    public class CorrelationFeatureSelector
+    public class CorrelationFeatureSelector : IFeatureSelector
     {
         private readonly MLContext _mlContext;
         private readonly StringBuilder _report;

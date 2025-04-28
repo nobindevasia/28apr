@@ -7,16 +7,19 @@ using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
 using D2G.Iris.ML.DataBalancing;
 using D2G.Iris.ML.FeatureEngineering;
+using D2G.Iris.ML.Interfaces;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.Data
 {
-    public class DataProcessor
+    public class DataProcessor 
     {
         public async Task<ProcessedData> ProcessData(
             MLContext mlContext,
             IDataView rawData,
             string[] enabledFields,
-            ModelConfig config)
+            ModelConfig config,
+            ISqlHandler sqlHandler)
         {
             Console.WriteLine("\n=============== Processing Data ===============");
 
@@ -53,33 +56,18 @@ namespace D2G.Iris.ML.Data
                     // Data Balancing First
                     if (config.DataBalancing.Method != DataBalanceMethod.None)
                     {
-                        var balancer = new SmoteDataBalancer();
-                        processedData = await balancer.BalanceDataset(
-                            mlContext,
-                            processedData,
-                            currentFeatures,
-                            config.DataBalancing,
-                            config.TargetField);
-                        balancedCount = processedData.GetRowCount() ?? originalCount;
-                        Console.WriteLine($"Data balanced. New count: {balancedCount}");
+                        var balanceResult = await ProcessDataBalancing(mlContext, processedData, currentFeatures, config);
+                        processedData = balanceResult.balancedData;
+                        balancedCount = balanceResult.count;
                     }
 
                     // Then Feature Selection
                     if (config.FeatureEngineering.Method != FeatureSelectionMethod.None)
                     {
-                        var selector = new CorrelationFeatureSelector(mlContext);
-                        var result = await selector.SelectFeatures(
-                            mlContext,
-                            processedData,
-                            currentFeatures,
-                            config.ModelType,
-                            config.TargetField,
-                            config.FeatureEngineering);
-
-                        processedData = result.transformedData;
-                        currentFeatures = result.selectedFeatures;
-                        selectionReport = result.report;
-                        Console.WriteLine(selectionReport);
+                        var featureResult = await ProcessFeatureSelection(mlContext, processedData, currentFeatures, config);
+                        processedData = featureResult.transformedData;
+                        currentFeatures = featureResult.selectedFeatures;
+                        selectionReport = featureResult.report;
                     }
                 }
                 else
@@ -87,33 +75,38 @@ namespace D2G.Iris.ML.Data
                     // Feature Selection First
                     if (config.FeatureEngineering.Method != FeatureSelectionMethod.None)
                     {
-                        var selector = new CorrelationFeatureSelector(mlContext);
-                        var result = await selector.SelectFeatures(
-                            mlContext,
-                            processedData,
-                            currentFeatures,
-                            config.ModelType,
-                            config.TargetField,
-                            config.FeatureEngineering);
-
-                        processedData = result.transformedData;
-                        currentFeatures = result.selectedFeatures;
-                        selectionReport = result.report;
-                        Console.WriteLine(selectionReport);
+                        var featureResult = await ProcessFeatureSelection(mlContext, processedData, currentFeatures, config);
+                        processedData = featureResult.transformedData;
+                        currentFeatures = featureResult.selectedFeatures;
+                        selectionReport = featureResult.report;
                     }
 
                     // Then Data Balancing
                     if (config.DataBalancing.Method != DataBalanceMethod.None)
                     {
-                        var balancer = new SmoteDataBalancer();
-                        processedData = await balancer.BalanceDataset(
-                            mlContext,
+                        var balanceResult = await ProcessDataBalancing(mlContext, processedData, currentFeatures, config);
+                        processedData = balanceResult.balancedData;
+                        balancedCount = balanceResult.count;
+                    }
+                }
+
+                // Save processed data if output table is specified
+                if (!string.IsNullOrEmpty(config.Database.OutputTableName))
+                {
+                    try
+                    {
+                        sqlHandler.SaveToSql(
+                            config.Database.OutputTableName,
                             processedData,
                             currentFeatures,
-                            config.DataBalancing,
-                            config.TargetField);
-                        balancedCount = processedData.GetRowCount() ?? originalCount;
-                        Console.WriteLine($"Data balanced. New count: {balancedCount}");
+                            config.TargetField,
+                            config.ModelType);
+
+                        Console.WriteLine($"Processed data saved to: {config.Database.OutputTableName}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error saving processed data: {ex.Message}");
                     }
                 }
 
@@ -136,6 +129,45 @@ namespace D2G.Iris.ML.Data
                 Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 throw;
             }
+        }
+
+        private async Task<(IDataView balancedData, long count)> ProcessDataBalancing(
+            MLContext mlContext,
+            IDataView data,
+            string[] features,
+            ModelConfig config)
+        {
+            var balancer = new SmoteDataBalancer();
+            var balancedData = await balancer.BalanceDataset(
+                mlContext,
+                data,
+                features,
+                config.DataBalancing,
+                config.TargetField);
+
+            var count = balancedData.GetRowCount() ?? 0;
+            Console.WriteLine($"Data balanced. New count: {count}");
+
+            return (balancedData, count);
+        }
+
+        private async Task<(IDataView transformedData, string[] selectedFeatures, string report)> ProcessFeatureSelection(
+            MLContext mlContext,
+            IDataView data,
+            string[] features,
+            ModelConfig config)
+        {
+            var selector = new CorrelationFeatureSelector(mlContext);
+            var result = await selector.SelectFeatures(
+                mlContext,
+                data,
+                features,
+                config.ModelType,
+                config.TargetField,
+                config.FeatureEngineering);
+
+            Console.WriteLine(result.report);
+            return result;
         }
     }
 }

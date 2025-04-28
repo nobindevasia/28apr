@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace D2G.Iris.ML.Interfaces
+namespace D2G.Iris.ML.Core.Interfaces
 {
     public interface IDataLoader
     {

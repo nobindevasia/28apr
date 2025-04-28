@@ -4,10 +4,11 @@ using System.Threading.Tasks;
 using Microsoft.ML;
 using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.FeatureEngineering
 {
-    public class NoFeatureSelector 
+    public class NoFeatureSelector : IFeatureSelector
     {
         private readonly MLContext _mlContext;
         private readonly StringBuilder _report;

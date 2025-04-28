@@ -6,10 +6,11 @@ using Microsoft.Data.SqlClient;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Enums;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.Data
 {
-    public class DatabaseDataLoader 
+    public class DatabaseDataLoader : IDataLoader
     {
         private readonly MLContext _mlContext;
         private long? _lastLoadedRowCount;
@@ -27,7 +28,7 @@ namespace D2G.Iris.ML.Data
             string targetColumn,
             string whereSyntax = "")
         {
-            Console.WriteLine("=============== Loading Data into IDataView ===============");
+            Console.WriteLine("=============== Loading Data ===============");
 
             string fullTableName = tableName.Contains('.')
                 ? string.Join('.', tableName.Split('.').Select(part => $"[{part}]"))

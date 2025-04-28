@@ -53,7 +53,8 @@ namespace D2G.Iris.ML
                     mlContext,
                     rawData,
                     enabledFields,
-                    config);
+                    config,
+                    sqlHandler);  // Added sqlHandler parameter here
 
                 // Train the model
                 Console.WriteLine("Training model...");
@@ -83,15 +84,14 @@ namespace D2G.Iris.ML
                         break;
 
                     case ModelType.Regression:
-                        var RegressionTrainer = (RegressionTrainer)modelTrainer;
-                        await RegressionTrainer.TrainModel(
+                        var regressionTrainer = (RegressionTrainer)modelTrainer;
+                        await regressionTrainer.TrainModel(
                             mlContext,
                             processedData.Data,
                             processedData.FeatureNames,
                             config,
                             processedData);
                         break;
-                    
 
                     default:
                         throw new ArgumentException($"Unsupported model type: {config.ModelType}");

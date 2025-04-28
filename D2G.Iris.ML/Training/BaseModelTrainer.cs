@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-//using D2G.Iris.ML.Core.Interfaces;
+using D2G.Iris.ML.Interfaces;
 using D2G.Iris.ML.Core.Models;
 //using D2G.Iris.ML.Utils;
 using D2G.Iris.ML.Training;

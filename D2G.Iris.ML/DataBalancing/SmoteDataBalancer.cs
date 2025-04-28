@@ -5,13 +5,12 @@ using System.Threading.Tasks;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Models;
+using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.DataBalancing
 {
-    public class SmoteDataBalancer
+    public class SmoteDataBalancer : IDataBalancer
     {
-        
-
         public async Task<IDataView> BalanceDataset(
             MLContext mlContext,
             IDataView data,
