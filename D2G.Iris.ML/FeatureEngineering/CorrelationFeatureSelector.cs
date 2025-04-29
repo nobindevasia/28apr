@@ -23,7 +23,6 @@ namespace D2G.Iris.ML.FeatureEngineering
             _report = new StringBuilder();
         }
 
-        // Feature rows for different model types
         private class RegressionFeatureRow
         {
             [VectorType]
