@@ -46,25 +46,20 @@ namespace D2G.Iris.ML.FeatureEngineering
                 _report.AppendLine($"Applying PCA with {numberOfComponents} components");
                 _report.AppendLine($"Original feature count: {candidateFeatures.Length}");
 
-                // First stage: create initial pipeline to concatenate features
                 var initialPipeline = mlContext.Transforms.Concatenate("FeaturesTemp", candidateFeatures);
                 var initialData = initialPipeline.Fit(data).Transform(data);
 
-                // Second stage: normalize the features
                 var normalizePipeline = mlContext.Transforms.NormalizeMinMax("FeaturesNormalized", "FeaturesTemp");
                 var normalizedData = normalizePipeline.Fit(initialData).Transform(initialData);
 
-                // Third stage: apply PCA
                 var pcaPipeline = mlContext.Transforms.ProjectToPrincipalComponents(
                     outputColumnName: "Features",
                     inputColumnName: "FeaturesNormalized",
                     rank: numberOfComponents);
                 var pcaData = pcaPipeline.Fit(normalizedData).Transform(normalizedData);
 
-                // Important: Make sure to preserve the original targetField and its type
                 IDataView transformedData = pcaData;
 
-                // Create synthetic feature names for PCA components
                 string[] pcaFeatureNames = Enumerable.Range(1, numberOfComponents)
                     .Select(i => $"PCA_Component_{i}")
                     .ToArray();

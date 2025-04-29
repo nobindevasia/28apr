@@ -38,18 +38,14 @@ namespace D2G.Iris.ML.FeatureEngineering
 
             try
             {
-                // Extract feature values
                 var featureValues = new List<double[]>();
                 foreach (var feature in candidateFeatures)
                 {
-                    // Extract column values and convert to double[]
                     featureValues.Add(GetColumnValues(data, feature));
                 }
 
-                // Extract target values
                 var targetValues = GetColumnValues(data, targetField);
 
-                // Calculate target correlations for each feature
                 var targetCorrelations = new Dictionary<string, double>();
                 for (int i = 0; i < candidateFeatures.Length; i++)
                 {
@@ -57,7 +53,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                     targetCorrelations[candidateFeatures[i]] = Math.Abs(correlation);
                 }
 
-                // Calculate correlation matrix between features
                 var correlationMatrix = Matrix<double>.Build.Dense(
                     candidateFeatures.Length,
                     candidateFeatures.Length
@@ -74,7 +69,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                     }
                 }
 
-                // Sort features by target correlation
                 var sortedFeatures = targetCorrelations
                     .OrderByDescending(x => x.Value)
                     .Select(x => x.Key)
@@ -86,7 +80,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                     _report.AppendLine($"{feature,-40} | {targetCorrelations[feature]:F4}");
                 }
 
-                // Select features based on correlation and multicollinearity
                 var selectedFeatures = new List<string>();
                 foreach (var feature in sortedFeatures)
                 {
@@ -111,7 +104,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                     }
                 }
 
-                // Ensure we have at least one feature
                 if (selectedFeatures.Count == 0 && sortedFeatures.Count > 0)
                 {
                     selectedFeatures.Add(sortedFeatures[0]);
@@ -127,7 +119,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                     _report.AppendLine($"- {feature} (correlation with target: {targetCorrelations[feature]:F4})");
                 }
 
-                // Create transformed data with selected features
                 var pipeline = mlContext.Transforms.Concatenate("Features", selectedFeatures.ToArray());
                 var transformedData = pipeline.Fit(data).Transform(data);
 

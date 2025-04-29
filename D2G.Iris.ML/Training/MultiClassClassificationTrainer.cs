@@ -34,8 +34,6 @@ namespace D2G.Iris.ML.Training
             ProcessedData processedData)
         {
             Console.WriteLine($"\nStarting multiclass classification model training using {config.TrainingParameters.Algorithm}...");
-            Console.WriteLine($"Selected features: {string.Join(", ", featureNames)}");
-
             try
             {
                 var data = mlContext.Data
@@ -85,7 +83,7 @@ namespace D2G.Iris.ML.Training
 
 
                 ConsoleHelper.PrintMultiClassClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
-                Console.WriteLine($"Confusion Matrix:\n{metrics.ConfusionMatrix.GetFormattedConfusionTable()}");    
+                Console.WriteLine($"Confusion Matrix:\n{metrics.ConfusionMatrix.GetFormattedConfusionTable()}");
 
                 await ModelHelper.CreateModelInfo<MulticlassClassificationMetrics, float>(
                 metrics,

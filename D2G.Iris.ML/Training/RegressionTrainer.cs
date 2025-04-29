@@ -20,6 +20,13 @@ namespace D2G.Iris.ML.Training
             _trainerFactory = trainerFactory;
         }
 
+        private class RegressionDataPoint
+        {
+            [VectorType]
+            public float[] Features { get; set; }
+            public float Label { get; set; }
+        }
+
         public async Task<ITransformer> TrainModel(
             MLContext mlContext,
             IDataView dataView,
@@ -34,24 +41,16 @@ namespace D2G.Iris.ML.Training
                 var labelPipeline = mlContext.Transforms.CopyColumns("Label", config.TargetField);
                 var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
 
-                var featureVectors = mlContext.Data
-                    .CreateEnumerable<FeatureVector>(labeledData, reuseRowObject: false)
+                var dataPoints = mlContext.Data
+                    .CreateEnumerable<RegressionDataPoint>(labeledData, reuseRowObject: false)
                     .ToList();
 
-                var rows = featureVectors
-                    .Select(fv => new RegRow
-                    {
-                        Features = fv.Features,
-                        Label = fv.Label
-                    })
-                    .ToList();
-
-                var schemaDef = SchemaDefinition.Create(typeof(RegRow));
-                schemaDef[nameof(RegRow.Features)].ColumnType = new VectorDataViewType(
+                var schemaDef = SchemaDefinition.Create(typeof(RegressionDataPoint));
+                schemaDef[nameof(RegressionDataPoint.Features)].ColumnType = new VectorDataViewType(
                     NumberDataViewType.Single,
                     featureNames.Length);
 
-                var typedData = mlContext.Data.LoadFromEnumerable(rows, schemaDef);
+                var typedData = mlContext.Data.LoadFromEnumerable(dataPoints, schemaDef);
 
                 var split = mlContext.Data.TrainTestSplit(
                     typedData,
@@ -92,20 +91,6 @@ namespace D2G.Iris.ML.Training
                 Console.WriteLine($"\nError during regression training: {ex.Message}");
                 throw;
             }
-        }
-
-        private class FeatureVector
-        {
-            [VectorType]
-            public float[] Features { get; set; }
-            public float Label { get; set; }
-        }
-
-        private class RegRow
-        {
-            [VectorType]
-            public float[] Features { get; set; }
-            public float Label { get; set; }
         }
     }
 }

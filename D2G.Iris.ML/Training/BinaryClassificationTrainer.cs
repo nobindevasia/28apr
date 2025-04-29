@@ -1,12 +1,12 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using D2G.Iris.ML.Core.Models;
-using D2G.Iris.ML.Training;
-using D2G.Iris.ML.Utils;
 using D2G.Iris.ML.Core.Interfaces;
+using D2G.Iris.ML.Core.Models;
+using D2G.Iris.ML.Utils;
 
 namespace D2G.Iris.ML.Training
 {
@@ -28,82 +28,82 @@ namespace D2G.Iris.ML.Training
             ModelConfig config,
             ProcessedData processedData)
         {
-            Console.WriteLine($"\nStarting binary classification model training using {config.TrainingParameters.Algorithm}...");
+            Console.WriteLine($"\nStarting binary classification using {config.TrainingParameters.Algorithm}...");
 
-            try
+            var labelPipeline = _mlContext.Transforms.CopyColumns(
+                    outputColumnName: "RawLabel", inputColumnName: config.TargetField)
+                .Append(_mlContext.Transforms.Conversion.ConvertType(
+                    outputColumnName: "Label", inputColumnName: "RawLabel", outputKind: DataKind.Boolean));
+            var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
+
+
+            IDataView fixedData;
+            if (labeledData.Schema.GetColumnOrNull("Features").HasValue)
             {
-                var rows = mlContext.Data.CreateEnumerable<FeatureVector>(dataView, reuseRowObject: false)
-                    .Select(row => new BinaryRow
-                    {
-                        Features = row.Features.Take(featureNames.Length).ToArray(), 
-                        Label = row.Label > 0 
-                    })
+
+                var temp = labeledData.GetColumn<VBuffer<float>>("Features")
+                    .Zip(labeledData.GetColumn<bool>("Label"), (feat, lbl) => new BinaryVector { Features = feat.GetValues().ToArray(), Label = lbl })
                     .ToList();
+                var schemaDef = SchemaDefinition.Create(typeof(BinaryVector));
+                schemaDef[nameof(BinaryVector.Features)].ColumnType =
+                    new VectorDataViewType(NumberDataViewType.Single, featureNames.Length);
+                fixedData = _mlContext.Data.LoadFromEnumerable(temp, schemaDef);
+            }
+            else
+            {
+                fixedData = _mlContext.Transforms.Concatenate("Features", featureNames)
+                    .Fit(labeledData)
+                    .Transform(labeledData);
+            }
 
-                var schema = SchemaDefinition.Create(typeof(BinaryRow));
-                schema["Features"].ColumnType = new VectorDataViewType(NumberDataViewType.Single, featureNames.Length);
+            var split = _mlContext.Data.TrainTestSplit(
+                fixedData,
+                testFraction: config.TrainingParameters.TestFraction,
+                seed: 42);
 
-                var typedData = mlContext.Data.LoadFromEnumerable(rows, schema);
+            var trainer = _trainerFactory.GetTrainer(
+                config.ModelType,
+                config.TrainingParameters);
 
-                var dataSplit = mlContext.Data.TrainTestSplit(
-                    typedData,
-                    testFraction: config.TrainingParameters.TestFraction,
-                    seed: 42);
+            var pipeline = _mlContext.Transforms.NormalizeMinMax("Features")
+                .AppendCacheCheckpoint(_mlContext)
+                .Append(trainer)
+                .Append(_mlContext.Transforms.CopyColumns("Probability", "Score"));
 
-                var trainer = _trainerFactory.GetTrainer(
-                    config.ModelType,
-                    config.TrainingParameters);
 
-                var pipeline = mlContext.Transforms
-                    .NormalizeMinMax("Features")
-                    .Append(trainer)
-                    .Append(mlContext.Transforms.CopyColumns("Probability", "Score"));
+            var start = DateTime.Now;
+            var model = await Task.Run(() => pipeline.Fit(split.TrainSet));
+            Console.WriteLine($"Training completed in {(DateTime.Now - start).TotalSeconds:N1} sec");
 
-                var model = await Task.Run(() => pipeline.Fit(dataSplit.TrainSet));
+            Console.WriteLine("Evaluating model...");
+            var predictions = model.Transform(split.TestSet);
+            var metrics = _mlContext.BinaryClassification.Evaluate(
+                data: predictions,
+                labelColumnName: "Label",
+                scoreColumnName: "Score",
+                predictedLabelColumnName: "PredictedLabel");
+            ConsoleHelper.PrintBinaryClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
+            Console.WriteLine($"Confusion Matrix:\n{metrics.ConfusionMatrix.GetFormattedConfusionTable()}");
 
-                Console.WriteLine("Evaluating model...");
-                var predictions = model.Transform(dataSplit.TestSet);
-                var metrics = mlContext.BinaryClassification.Evaluate(
-                    predictions,
-                    labelColumnName: "Label",
-                    scoreColumnName: "Score",
-                    predictedLabelColumnName: "PredictedLabel");
-
-                ConsoleHelper.PrintBinaryClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
-                Console.WriteLine($"Confusion Matrix:\n{metrics.ConfusionMatrix.GetFormattedConfusionTable()}");
-
-                await ModelHelper.CreateModelInfo<BinaryClassificationMetrics, float>(
+            await ModelHelper.CreateModelInfo<BinaryClassificationMetrics, float>(
                 metrics,
-                dataView,
+                fixedData,
                 featureNames,
                 config,
                 processedData);
 
-                var modelPath = $"BinaryClassification_{config.TrainingParameters.Algorithm}_Model.zip";
-                mlContext.Model.Save(model, typedData.Schema, modelPath);
-                Console.WriteLine($"Model saved to: {modelPath}");
+            var modelPath = $"BinaryClassification_{config.TrainingParameters.Algorithm}_Model.zip";
+            mlContext.Model.Save(model, fixedData.Schema, modelPath);
+            Console.WriteLine($"Model saved to: {modelPath}");
 
-                return model;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error during model training: {ex.Message}");
-                throw;
-            }
+            return model;
         }
 
-        private class BinaryRow
+        private class BinaryVector
         {
             [VectorType]
             public float[] Features { get; set; }
             public bool Label { get; set; }
-        }
-
-        private class FeatureVector
-        {
-            [VectorType]
-            public float[] Features { get; set; }
-            public long Label { get; set; }
         }
     }
 }
