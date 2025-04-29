@@ -17,8 +17,6 @@ namespace D2G.Iris.ML.Data
         private SqlConnectionStringBuilder _builder;
         private readonly string _tableName;
 
-        public SqlHandler() { }
-
         public SqlHandler(string tableName)
         {
             _tableName = tableName ?? throw new ArgumentNullException(nameof(tableName));
@@ -32,7 +30,7 @@ namespace D2G.Iris.ML.Data
                 InitialCatalog = dbConfig.Database,
                 IntegratedSecurity = true,
                 TrustServerCertificate = true,
-                ConnectTimeout = 30
+                ConnectTimeout = 60
             };
         }
 
@@ -50,17 +48,14 @@ namespace D2G.Iris.ML.Data
             string targetField,
             ModelType modelType)
         {
-            // Determine destination table
             var destTable = string.IsNullOrWhiteSpace(tableName) ? _tableName : tableName;
             if (string.IsNullOrWhiteSpace(destTable))
                 throw new ArgumentException("Table name must be provided.", nameof(tableName));
 
-            // Prepare DataTable schema
             var dataTable = new DataTable();
             foreach (var feature in featureNames)
                 dataTable.Columns.Add(feature, typeof(float));
 
-            // Determine target column .NET type
             Type targetDotNetType = modelType switch
             {
                 ModelType.BinaryClassification => typeof(bool),
@@ -69,11 +64,9 @@ namespace D2G.Iris.ML.Data
             };
             dataTable.Columns.Add(targetField, targetDotNetType);
 
-            // Detect PCA vector column
             var featsCol = data.Schema.GetColumnOrNull("Features");
             bool isPca = featsCol.HasValue && featureNames.All(f => f.StartsWith("PCA_Component_"));
 
-            // Extract feature rows
             var featureRows = new List<float[]>();
             int rowCount;
 
@@ -106,7 +99,6 @@ namespace D2G.Iris.ML.Data
                 }
             }
 
-            // Extract and convert target column values
             var colOpt = data.Schema.GetColumnOrNull(targetField);
             if (!colOpt.HasValue)
                 throw new InvalidOperationException($"Target column '{targetField}' not found in schema.");
@@ -147,7 +139,7 @@ namespace D2G.Iris.ML.Data
                     throw new InvalidOperationException($"Cannot convert target column '{targetField}' of type {rawType} to float.");
             }
 
-            // Populate DataTable
+
             for (int r = 0; r < rowCount; r++)
             {
                 var dr = dataTable.NewRow();
@@ -158,7 +150,7 @@ namespace D2G.Iris.ML.Data
                 dataTable.Rows.Add(dr);
             }
 
-            // Open connection and recreate table
+
             using var connection = new SqlConnection(GetConnectionString());
             connection.Open();
             string colsDef = string.Join(", ", featureNames.Select(f => $"[{f}] FLOAT"));
@@ -179,7 +171,6 @@ CREATE TABLE {destTable} (
             using var cmd = new SqlCommand(createSql, connection);
             cmd.ExecuteNonQuery();
 
-            // Bulk copy
             using var bulk = new SqlBulkCopy(connection)
             {
                 DestinationTableName = destTable,

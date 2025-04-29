@@ -2,15 +2,15 @@
   "modelConfig": {
     "author": "Nobin Devasia",
     "description": "Model for Agenitor 408",
-    "modelType": "BinaryClassification",
-    "targetField": "Label",
+    "modelType": "Regression",
+    "targetField": "ActivePower",
 
     "database": {
       "server": "sim-01-02",
       "database": "sql-iris-dev",
       "whereClause": "",
       "tableName": "ComputeData.MessageProb256_Ag408_dummy",
-      "outputTableName": ""
+      "outputTableName": "ComputeData.MessageProb256_Ag408_dummy_pr"
     },
 
     "dataBalancing": {
@@ -22,7 +22,7 @@
     },
 
     "featureEngineering": {
-      "method": "None",
+      "method": "PCA",
       "executionOrder": 1,
       "numberOfComponents": 2,
       "maxFeatures": 2,

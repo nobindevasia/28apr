@@ -20,13 +20,6 @@ namespace D2G.Iris.ML.Training
             _trainerFactory = trainerFactory;
         }
 
-        private class ModelInput
-        {
-            [VectorType]
-            public float[] Features { get; set; }
-            public float Label { get; set; }
-        }
-
         public async Task<ITransformer> TrainModel(
             MLContext mlContext,
             IDataView dataView,
@@ -37,72 +30,54 @@ namespace D2G.Iris.ML.Training
             try
             {
                 Console.WriteLine($"\nStarting regression model training using {config.TrainingParameters.Algorithm}...");
-                Console.WriteLine($"Selected features: {string.Join(", ", featureNames)}");
 
                 var labelPipeline = mlContext.Transforms.CopyColumns("Label", config.TargetField);
                 var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
 
-                bool hasPrecomputedFeatures = labeledData.Schema.GetColumnOrNull("Features").HasValue;
-                IDataView transformedData;
+                var featureVectors = mlContext.Data
+                    .CreateEnumerable<FeatureVector>(labeledData, reuseRowObject: false)
+                    .ToList();
 
-                if (!hasPrecomputedFeatures)
-                {
+                var rows = featureVectors
+                    .Select(fv => new RegRow
+                    {
+                        Features = fv.Features,
+                        Label = fv.Label
+                    })
+                    .ToList();
 
-                    var featurePipeline = mlContext.Transforms.Concatenate("Features", featureNames);
-                    transformedData = featurePipeline.Fit(labeledData).Transform(labeledData);
-                }
-                else
-                {
-                    Console.WriteLine("Using precomputed feature vector...");
-                    transformedData = labeledData;
-                }
+                var schemaDef = SchemaDefinition.Create(typeof(RegRow));
+                schemaDef[nameof(RegRow.Features)].ColumnType = new VectorDataViewType(
+                    NumberDataViewType.Single,
+                    featureNames.Length);
 
+                var typedData = mlContext.Data.LoadFromEnumerable(rows, schemaDef);
 
-                //Console.WriteLine("\nData schema after transformation:");
-                //var previewCount = Math.Min(5, (int)(transformedData.GetRowCount() ?? 0));
-                //if (previewCount > 0)
-                //{
-                //    var featuresType = transformedData.Schema["Features"].Type;
-                //    Console.WriteLine($"Features column type: {featuresType}");
-
-                //    if (featuresType is VectorDataViewType vectorType)
-                //    {
-                //        Console.WriteLine($"Features vector size: {vectorType.Size}");
-                //    }
-                //}
-
-                var splitData = mlContext.Data.TrainTestSplit(
-                    transformedData,
+                var split = mlContext.Data.TrainTestSplit(
+                    typedData,
                     testFraction: config.TrainingParameters.TestFraction,
                     seed: 42);
-
 
                 var trainer = _trainerFactory.GetTrainer(
                     config.ModelType,
                     config.TrainingParameters);
 
-                var pipeline = mlContext.Transforms
-                    .NormalizeMinMax("Features")
+                var pipeline = mlContext.Transforms.NormalizeMinMax("Features")
                     .AppendCacheCheckpoint(mlContext)
                     .Append(trainer);
 
+                var start = DateTime.Now;
+                var model = await Task.Run(() => pipeline.Fit(split.TrainSet));
+                Console.WriteLine($"Training completed in {(DateTime.Now - start).TotalSeconds:N1} seconds");
 
-                var trainStartTime = DateTime.Now;
-                var model = await Task.Run(() => pipeline.Fit(splitData.TrainSet));
-                var trainingTime = DateTime.Now - trainStartTime;
-                Console.WriteLine($"Training completed in {trainingTime.TotalSeconds:N1} seconds");
-
-
-                var predictions = model.Transform(splitData.TestSet);
+                var predictions = model.Transform(split.TestSet);
                 var metrics = mlContext.Regression.Evaluate(predictions);
-
                 ConsoleHelper.PrintRegressionMetrics(config.TrainingParameters.Algorithm, metrics);
 
                 var modelPath = $"Regression_{config.TrainingParameters.Algorithm}_Model.zip";
-                mlContext.Model.Save(model, transformedData.Schema, modelPath);
+                mlContext.Model.Save(model, typedData.Schema, modelPath);
                 Console.WriteLine($"\nModel saved to: {modelPath}");
 
-             
                 await ModelHelper.CreateModelInfo<RegressionMetrics, float>(
                     metrics,
                     dataView,
@@ -114,14 +89,23 @@ namespace D2G.Iris.ML.Training
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"\nError during model training: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
-                }
+                Console.WriteLine($"\nError during regression training: {ex.Message}");
                 throw;
             }
+        }
+
+        private class FeatureVector
+        {
+            [VectorType]
+            public float[] Features { get; set; }
+            public float Label { get; set; }
+        }
+
+        private class RegRow
+        {
+            [VectorType]
+            public float[] Features { get; set; }
+            public float Label { get; set; }
         }
     }
 }

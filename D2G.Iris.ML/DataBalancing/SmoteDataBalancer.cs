@@ -94,24 +94,20 @@ namespace D2G.Iris.ML.DataBalancing
                     config.KNeighbors,
                     random);
 
-                // Combine all samples
                 var balancedFeatures = new List<FeatureVector>();
 
-                // Add undersampled majority class
                 balancedFeatures.AddRange(undersampledMajority.Select((f, i) => new FeatureVector
                 {
                     Features = f,
                     Label = undersampledMajorityLabels[i]
                 }));
 
-                // Add original minority class
                 balancedFeatures.AddRange(minorityClass.Select((f, i) => new FeatureVector
                 {
                     Features = f,
                     Label = minorityLabels[i]
                 }));
 
-                // Add synthetic samples
                 balancedFeatures.AddRange(syntheticSamples.Select(f => new FeatureVector
                 {
                     Features = f,

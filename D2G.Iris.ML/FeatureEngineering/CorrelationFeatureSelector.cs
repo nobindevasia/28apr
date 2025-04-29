@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using MathNet.Numerics.Statistics;
+using MathNet.Numerics.LinearAlgebra;
 using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
 using D2G.Iris.ML.Core.Interfaces;
@@ -23,20 +24,6 @@ namespace D2G.Iris.ML.FeatureEngineering
             _report = new StringBuilder();
         }
 
-        private class RegressionFeatureRow
-        {
-            [VectorType]
-            public float[] Features { get; set; }
-            public float RegressionTarget { get; set; }
-        }
-
-        private class ClassificationFeatureRow
-        {
-            [VectorType]
-            public float[] Features { get; set; }
-            public long ClassificationTarget { get; set; }
-        }
-
         public async Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
             MLContext mlContext,
             IDataView data,
@@ -51,147 +38,83 @@ namespace D2G.Iris.ML.FeatureEngineering
 
             try
             {
-                // First, create a Features column if it doesn't exist
-                IDataView featuresData = data;
-                if (data.Schema.GetColumnOrNull("Features") == null)
+                // Extract feature values
+                var featureValues = new List<double[]>();
+                foreach (var feature in candidateFeatures)
                 {
-                    var featuresPipeline = mlContext.Transforms.Concatenate("Features", candidateFeatures);
-                    featuresData = featuresPipeline.Fit(data).Transform(data);
+                    // Extract column values and convert to double[]
+                    featureValues.Add(GetColumnValues(data, feature));
                 }
 
-                // Debug schema
-                _report.AppendLine("\nData schema:");
-                foreach (var col in featuresData.Schema)
-                {
-                    _report.AppendLine($"  Column: {col.Name}, Type: {col.Type}");
-                }
+                // Extract target values
+                var targetValues = GetColumnValues(data, targetField);
 
-                // Check if target field exists
-                if (!featuresData.Schema.GetColumnOrNull(targetField).HasValue)
-                {
-                    _report.AppendLine($"Error: Target field '{targetField}' not found in schema");
-                    throw new InvalidOperationException($"Target field '{targetField}' not found");
-                }
-
-                // Copy target field to a standard name column for extraction
-                IDataView renamedData;
-                if (modelType == ModelType.Regression)
-                {
-                    var renamePipeline = mlContext.Transforms.CopyColumns("RegressionTarget", targetField);
-                    renamedData = renamePipeline.Fit(featuresData).Transform(featuresData);
-                }
-                else
-                {
-                    var renamePipeline = mlContext.Transforms.CopyColumns("ClassificationTarget", targetField);
-                    renamedData = renamePipeline.Fit(featuresData).Transform(featuresData);
-                }
-
-                // Extract feature and target data
-                List<double> targetValues = new List<double>();
-                List<float[]> featureVectors = new List<float[]>();
-
-                if (modelType == ModelType.Regression)
-                {
-                    var rows = mlContext.Data.CreateEnumerable<RegressionFeatureRow>(renamedData, reuseRowObject: false).ToList();
-                    if (rows.Count == 0)
-                    {
-                        throw new InvalidOperationException("No rows found in data");
-                    }
-
-                    foreach (var row in rows)
-                    {
-                        featureVectors.Add(row.Features);
-                        targetValues.Add(row.RegressionTarget);
-                    }
-                }
-                else
-                {
-                    var rows = mlContext.Data.CreateEnumerable<ClassificationFeatureRow>(renamedData, reuseRowObject: false).ToList();
-                    if (rows.Count == 0)
-                    {
-                        throw new InvalidOperationException("No rows found in data");
-                    }
-
-                    foreach (var row in rows)
-                    {
-                        featureVectors.Add(row.Features);
-                        targetValues.Add(row.ClassificationTarget);
-                    }
-                }
-
-                _report.AppendLine($"\nExtracted {featureVectors.Count} samples for correlation analysis");
-
-                // Calculate correlations with target for each feature
+                // Calculate target correlations for each feature
                 var targetCorrelations = new Dictionary<string, double>();
-
-                for (int i = 0; i < candidateFeatures.Length && i < featureVectors[0].Length; i++)
+                for (int i = 0; i < candidateFeatures.Length; i++)
                 {
-                    try
+                    var correlation = Correlation.Pearson(featureValues[i], targetValues);
+                    targetCorrelations[candidateFeatures[i]] = Math.Abs(correlation);
+                }
+
+                // Calculate correlation matrix between features
+                var correlationMatrix = Matrix<double>.Build.Dense(
+                    candidateFeatures.Length,
+                    candidateFeatures.Length
+                );
+
+                for (int i = 0; i < candidateFeatures.Length; i++)
+                {
+                    for (int j = 0; j < candidateFeatures.Length; j++)
                     {
-                        var featureColumn = featureVectors.Select(f => (double)f[i]).ToArray();
-                        var correlation = Math.Abs(Correlation.Pearson(featureColumn, targetValues.ToArray()));
-                        targetCorrelations[candidateFeatures[i]] = correlation;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error calculating correlation for {candidateFeatures[i]}: {ex.Message}");
-                        targetCorrelations[candidateFeatures[i]] = 0; // Default to zero correlation on error
+                        correlationMatrix[i, j] = Correlation.Pearson(
+                            featureValues[i],
+                            featureValues[j]
+                        );
                     }
                 }
 
-                // Sort features by correlation
+                // Sort features by target correlation
                 var sortedFeatures = targetCorrelations
                     .OrderByDescending(x => x.Value)
+                    .Select(x => x.Key)
                     .ToList();
 
                 _report.AppendLine("\nFeatures Ranked by Target Correlation:");
-                foreach (var pair in sortedFeatures)
+                foreach (var feature in sortedFeatures)
                 {
-                    _report.AppendLine($"{pair.Key,-40} | {pair.Value:F4}");
+                    _report.AppendLine($"{feature,-40} | {targetCorrelations[feature]:F4}");
                 }
 
-                // Select features considering multicollinearity
+                // Select features based on correlation and multicollinearity
                 var selectedFeatures = new List<string>();
-                var selectedIndices = new List<int>();
-
-                foreach (var pair in sortedFeatures)
+                foreach (var feature in sortedFeatures)
                 {
                     if (selectedFeatures.Count >= config.MaxFeatures)
                         break;
 
-                    var currentIndex = Array.IndexOf(candidateFeatures, pair.Key);
-                    var currentColumn = featureVectors.Select(f => (double)f[currentIndex]).ToArray();
-
                     bool isHighlyCorrelated = false;
-                    foreach (var selectedIndex in selectedIndices)
+                    foreach (var selectedFeature in selectedFeatures)
                     {
-                        var selectedColumn = featureVectors.Select(f => (double)f[selectedIndex]).ToArray();
-                        try
+                        var i1 = Array.IndexOf(candidateFeatures, feature);
+                        var i2 = Array.IndexOf(candidateFeatures, selectedFeature);
+                        if (Math.Abs(correlationMatrix[i1, i2]) > config.MulticollinearityThreshold)
                         {
-                            var correlation = Math.Abs(Correlation.Pearson(currentColumn, selectedColumn));
-                            if (correlation > config.MulticollinearityThreshold)
-                            {
-                                isHighlyCorrelated = true;
-                                break;
-                            }
-                        }
-                        catch
-                        {
-                            // Skip this comparison if correlation calculation fails
+                            isHighlyCorrelated = true;
+                            break;
                         }
                     }
 
                     if (!isHighlyCorrelated)
                     {
-                        selectedFeatures.Add(pair.Key);
-                        selectedIndices.Add(currentIndex);
+                        selectedFeatures.Add(feature);
                     }
                 }
 
                 // Ensure we have at least one feature
                 if (selectedFeatures.Count == 0 && sortedFeatures.Count > 0)
                 {
-                    selectedFeatures.Add(sortedFeatures[0].Key);
+                    selectedFeatures.Add(sortedFeatures[0]);
                 }
 
                 _report.AppendLine($"\nSelection Summary:");
@@ -216,6 +139,35 @@ namespace D2G.Iris.ML.FeatureEngineering
                 Console.WriteLine($"Full error details: {ex}");
                 throw;
             }
+        }
+
+        private double[] GetColumnValues(IDataView dataView, string columnName)
+        {
+            var column = dataView.Schema.GetColumnOrNull(columnName);
+            if (!column.HasValue)
+                throw new ArgumentException($"Column '{columnName}' not found in data");
+
+            var type = column.Value.Type;
+
+            if (type is NumberDataViewType numType)
+            {
+                if (numType.RawType == typeof(float))
+                    return dataView.GetColumn<float>(columnName).Select(v => (double)v).ToArray();
+                else if (numType.RawType == typeof(double))
+                    return dataView.GetColumn<double>(columnName).ToArray();
+                else if (numType.RawType == typeof(int))
+                    return dataView.GetColumn<int>(columnName).Select(v => (double)v).ToArray();
+                else if (numType.RawType == typeof(long))
+                    return dataView.GetColumn<long>(columnName).Select(v => (double)v).ToArray();
+                else
+                    return dataView.GetColumn<float>(columnName).Select(v => (double)v).ToArray();
+            }
+            else if (type is BooleanDataViewType)
+            {
+                return dataView.GetColumn<bool>(columnName).Select(v => v ? 1.0 : 0.0).ToArray();
+            }
+
+            throw new NotSupportedException($"Column type {type} is not supported for correlation analysis");
         }
     }
 }
