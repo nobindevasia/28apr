@@ -1,25 +1,19 @@
 ﻿using System;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.ML;
 using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
-using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.FeatureEngineering
 {
-    public class NoFeatureSelector : IFeatureSelector
+    public class NoFeatureSelector : BaseFeatureSelector
     {
-        private readonly MLContext _mlContext;
-        private readonly StringBuilder _report;
-
         public NoFeatureSelector(MLContext mlContext)
+            : base(mlContext)
         {
-            _mlContext = mlContext;
-            _report = new StringBuilder();
         }
 
-        public Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
+        public override Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
             MLContext mlContext,
             IDataView data,
             string[] candidateFeatures,
@@ -27,9 +21,7 @@ namespace D2G.Iris.ML.FeatureEngineering
             string targetField,
             FeatureEngineeringConfig config)
         {
-            _report.Clear();
-            _report.AppendLine("\nNo Feature Selection Applied");
-            _report.AppendLine("----------------------------------------");
+            InitializeReport("No");
             _report.AppendLine($"Using all enabled features: {candidateFeatures.Length}");
 
             foreach (var feature in candidateFeatures)
@@ -37,10 +29,12 @@ namespace D2G.Iris.ML.FeatureEngineering
                 _report.AppendLine($"- {feature}");
             }
 
-            var pipeline = mlContext.Transforms
-                .Concatenate("Features", candidateFeatures);
+            var transformedData = CreateFeaturesColumn(data, candidateFeatures);
 
-            var transformedData = pipeline.Fit(data).Transform(data);
+            AddFeatureSelectionSummary(
+                candidateFeatures.Length,
+                candidateFeatures.Length,
+                candidateFeatures);
 
             return Task.FromResult((transformedData, candidateFeatures, _report.ToString()));
         }

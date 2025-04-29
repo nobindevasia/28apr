@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.ML;
@@ -9,22 +8,17 @@ using MathNet.Numerics.Statistics;
 using MathNet.Numerics.LinearAlgebra;
 using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
-using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.FeatureEngineering
 {
-    public class CorrelationFeatureSelector : IFeatureSelector
+    public class CorrelationFeatureSelector : BaseFeatureSelector
     {
-        private readonly MLContext _mlContext;
-        private readonly StringBuilder _report;
-
         public CorrelationFeatureSelector(MLContext mlContext)
+            : base(mlContext)
         {
-            _mlContext = mlContext;
-            _report = new StringBuilder();
         }
 
-        public async Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
+        public override async Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
             MLContext mlContext,
             IDataView data,
             string[] candidateFeatures,
@@ -32,12 +26,13 @@ namespace D2G.Iris.ML.FeatureEngineering
             string targetField,
             FeatureEngineeringConfig config)
         {
-            _report.Clear();
-            _report.AppendLine("\nCorrelation-based Feature Selection Results:");
-            _report.AppendLine("----------------------------------------------");
+            InitializeReport("Correlation-based");
 
             try
             {
+
+                ValidateCorrelationConfiguration(config);
+
                 var featureValues = new List<double[]>();
                 foreach (var feature in candidateFeatures)
                 {
@@ -80,56 +75,72 @@ namespace D2G.Iris.ML.FeatureEngineering
                     _report.AppendLine($"{feature,-40} | {targetCorrelations[feature]:F4}");
                 }
 
-                var selectedFeatures = new List<string>();
-                foreach (var feature in sortedFeatures)
-                {
-                    if (selectedFeatures.Count >= config.MaxFeatures)
-                        break;
+                var selectedFeatures = SelectFeaturesWithMulticollinearityCheck(
+                    sortedFeatures,
+                    candidateFeatures,
+                    correlationMatrix,
+                    config,
+                    targetCorrelations);
 
-                    bool isHighlyCorrelated = false;
-                    foreach (var selectedFeature in selectedFeatures)
-                    {
-                        var i1 = Array.IndexOf(candidateFeatures, feature);
-                        var i2 = Array.IndexOf(candidateFeatures, selectedFeature);
-                        if (Math.Abs(correlationMatrix[i1, i2]) > config.MulticollinearityThreshold)
-                        {
-                            isHighlyCorrelated = true;
-                            break;
-                        }
-                    }
+                AddFeatureSelectionSummary(
+                    candidateFeatures.Length,
+                    selectedFeatures.Count,
+                    selectedFeatures.ToArray());
 
-                    if (!isHighlyCorrelated)
-                    {
-                        selectedFeatures.Add(feature);
-                    }
-                }
-
-                if (selectedFeatures.Count == 0 && sortedFeatures.Count > 0)
-                {
-                    selectedFeatures.Add(sortedFeatures[0]);
-                }
-
-                _report.AppendLine($"\nSelection Summary:");
-                _report.AppendLine($"Original features: {candidateFeatures.Length}");
-                _report.AppendLine($"Selected features: {selectedFeatures.Count}");
                 _report.AppendLine($"Multicollinearity threshold: {config.MulticollinearityThreshold}");
-                _report.AppendLine("\nSelected Features:");
+                _report.AppendLine("\nSelected Features with Correlation Values:");
                 foreach (var feature in selectedFeatures)
                 {
                     _report.AppendLine($"- {feature} (correlation with target: {targetCorrelations[feature]:F4})");
                 }
-
-                var pipeline = mlContext.Transforms.Concatenate("Features", selectedFeatures.ToArray());
-                var transformedData = pipeline.Fit(data).Transform(data);
+                var transformedData = CreateFeaturesColumn(data, selectedFeatures.ToArray());
 
                 return (transformedData, selectedFeatures.ToArray(), _report.ToString());
             }
             catch (Exception ex)
             {
-                _report.AppendLine($"Error during correlation analysis: {ex.Message}");
-                Console.WriteLine($"Full error details: {ex}");
+                AddErrorToReport(ex);
                 throw;
             }
+        }
+
+        private List<string> SelectFeaturesWithMulticollinearityCheck(
+            List<string> sortedFeatures,
+            string[] candidateFeatures,
+            Matrix<double> correlationMatrix,
+            FeatureEngineeringConfig config,
+            Dictionary<string, double> targetCorrelations)
+        {
+            var selectedFeatures = new List<string>();
+
+            foreach (var feature in sortedFeatures)
+            {
+                if (selectedFeatures.Count >= config.MaxFeatures)
+                    break;
+
+                bool isHighlyCorrelated = false;
+                foreach (var selectedFeature in selectedFeatures)
+                {
+                    var i1 = Array.IndexOf(candidateFeatures, feature);
+                    var i2 = Array.IndexOf(candidateFeatures, selectedFeature);
+                    if (Math.Abs(correlationMatrix[i1, i2]) > config.MulticollinearityThreshold)
+                    {
+                        isHighlyCorrelated = true;
+                        break;
+                    }
+                }
+
+                if (!isHighlyCorrelated)
+                {
+                    selectedFeatures.Add(feature);
+                }
+            }
+            if (selectedFeatures.Count == 0 && sortedFeatures.Count > 0)
+            {
+                selectedFeatures.Add(sortedFeatures[0]);
+            }
+
+            return selectedFeatures;
         }
 
         private double[] GetColumnValues(IDataView dataView, string columnName)
@@ -159,6 +170,17 @@ namespace D2G.Iris.ML.FeatureEngineering
             }
 
             throw new NotSupportedException($"Column type {type} is not supported for correlation analysis");
+        }
+
+        private void ValidateCorrelationConfiguration(FeatureEngineeringConfig config)
+        {
+            base.ValidateConfiguration(config);
+
+            if (config.MulticollinearityThreshold <= 0 || config.MulticollinearityThreshold >= 1)
+                throw new ArgumentException("Multicollinearity threshold must be between 0 and 1 for Correlation Selection");
+
+            if (config.MaxFeatures <= 0)
+                throw new ArgumentException("Max features must be greater than 0 for Correlation Selection");
         }
     }
 }

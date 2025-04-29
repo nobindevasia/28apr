@@ -1,27 +1,21 @@
 ﻿using System;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using D2G.Iris.ML.Core.Enums;
 using D2G.Iris.ML.Core.Models;
-using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.FeatureEngineering
 {
-    public class PCAFeatureSelector : IFeatureSelector
+    public class PCAFeatureSelector : BaseFeatureSelector
     {
-        private readonly MLContext _mlContext;
-        private readonly StringBuilder _report;
-
         public PCAFeatureSelector(MLContext mlContext)
+            : base(mlContext)
         {
-            _mlContext = mlContext;
-            _report = new StringBuilder();
         }
 
-        public Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
+        public override async Task<(IDataView transformedData, string[] selectedFeatures, string report)> SelectFeatures(
             MLContext mlContext,
             IDataView data,
             string[] candidateFeatures,
@@ -29,19 +23,12 @@ namespace D2G.Iris.ML.FeatureEngineering
             string targetField,
             FeatureEngineeringConfig config)
         {
-            _report.Clear();
-            _report.AppendLine("\nPCA Feature Selection Results:");
-            _report.AppendLine("----------------------------------------------");
+            InitializeReport("PCA");
 
             try
             {
+                ValidatePcaConfiguration(config, candidateFeatures.Length);
                 int numberOfComponents = config.NumberOfComponents;
-                if (numberOfComponents <= 0 || numberOfComponents > candidateFeatures.Length)
-                {
-                    _report.AppendLine($"Warning: Invalid number of components ({numberOfComponents}). " +
-                                      $"Using {Math.Min(candidateFeatures.Length, 3)} instead.");
-                    numberOfComponents = Math.Min(candidateFeatures.Length, 3);
-                }
 
                 _report.AppendLine($"Applying PCA with {numberOfComponents} components");
                 _report.AppendLine($"Original feature count: {candidateFeatures.Length}");
@@ -58,8 +45,6 @@ namespace D2G.Iris.ML.FeatureEngineering
                     rank: numberOfComponents);
                 var pcaData = pcaPipeline.Fit(normalizedData).Transform(normalizedData);
 
-                IDataView transformedData = pcaData;
-
                 string[] pcaFeatureNames = Enumerable.Range(1, numberOfComponents)
                     .Select(i => $"PCA_Component_{i}")
                     .ToArray();
@@ -71,13 +56,29 @@ namespace D2G.Iris.ML.FeatureEngineering
                     _report.AppendLine($"  - {name}");
                 }
 
-                return Task.FromResult((transformedData, pcaFeatureNames, _report.ToString()));
+                AddFeatureSelectionSummary(
+                    candidateFeatures.Length,
+                    pcaFeatureNames.Length,
+                    pcaFeatureNames);
+
+                return (pcaData, pcaFeatureNames, _report.ToString());
             }
             catch (Exception ex)
             {
-                _report.AppendLine($"Error during PCA analysis: {ex.Message}");
-                Console.WriteLine($"Full error details: {ex}");
+                AddErrorToReport(ex);
                 throw;
+            }
+        }
+
+        private void ValidatePcaConfiguration(FeatureEngineeringConfig config, int maxComponents)
+        {
+            base.ValidateConfiguration(config);
+
+            if (config.NumberOfComponents <= 0 || config.NumberOfComponents > maxComponents)
+            {
+                _report.AppendLine($"Warning: Invalid number of components ({config.NumberOfComponents}). " +
+                                  $"Using {Math.Min(maxComponents, 3)} instead.");
+                config.NumberOfComponents = Math.Min(maxComponents, 3);
             }
         }
     }

@@ -9,16 +9,13 @@ using D2G.Iris.ML.Utils;
 
 namespace D2G.Iris.ML.Training
 {
-    public class MultiClassClassificationTrainer : IModelTrainer
+    public class MultiClassClassificationTrainer : BaseModelTrainer
     {
-        private readonly MLContext _mlContext;
-        private readonly TrainerFactory _trainerFactory;
-
         public MultiClassClassificationTrainer(MLContext mlContext, TrainerFactory trainerFactory)
+            : base(mlContext, trainerFactory)
         {
-            _mlContext = mlContext;
-            _trainerFactory = trainerFactory;
         }
+
         private class ModelInput
         {
             [VectorType]
@@ -26,7 +23,7 @@ namespace D2G.Iris.ML.Training
             public long Label { get; set; }
         }
 
-        public async Task<ITransformer> TrainModel(
+        public override async Task<ITransformer> TrainModel(
             MLContext mlContext,
             IDataView dataView,
             string[] featureNames,
@@ -34,33 +31,21 @@ namespace D2G.Iris.ML.Training
             ProcessedData processedData)
         {
             Console.WriteLine($"\nStarting multiclass classification model training using {config.TrainingParameters.Algorithm}...");
+
             try
             {
-                var data = mlContext.Data
-                    .CreateEnumerable<ModelInput>(dataView, reuseRowObject: false)
-                    .Select(row => new ModelInput
-                    {
-                        Features = row.Features,
-                        Label = row.Label
-                    })
-                    .ToList();
+                IDataView fixedData = PrepareData(dataView, featureNames);
 
-                var schema = SchemaDefinition.Create(typeof(ModelInput));
-                schema["Features"].ColumnType =
-                    new VectorDataViewType(NumberDataViewType.Single, featureNames.Length);
-
-                var fixedData = mlContext.Data.LoadFromEnumerable(data, schema);
-
-                var splitData = mlContext.Data.TrainTestSplit(
+                var splitData = SplitTrainTestData(
+                    _mlContext,
                     fixedData,
-                    testFraction: config.TrainingParameters.TestFraction,
-                    seed: 42);
+                    config.TrainingParameters.TestFraction);
 
-                IEstimator<ITransformer> pipeline = mlContext.Transforms
+                IEstimator<ITransformer> pipeline = _mlContext.Transforms
                     .NormalizeMinMax("Features")
-                    .Append(mlContext.Transforms.Conversion
+                    .Append(_mlContext.Transforms.Conversion
                         .MapValueToKey(outputColumnName: "Label", inputColumnName: "Label"))
-                    .AppendCacheCheckpoint(mlContext);
+                    .AppendCacheCheckpoint(_mlContext);
 
                 var trainer = _trainerFactory.GetTrainer(
                     config.ModelType,
@@ -68,37 +53,35 @@ namespace D2G.Iris.ML.Training
 
                 pipeline = pipeline
                     .Append(trainer)
-                    .Append(mlContext.Transforms.Conversion
+                    .Append(_mlContext.Transforms.Conversion
                         .MapKeyToValue("PredictedLabel", "PredictedLabel"));
 
-                var trainStartTime = DateTime.Now;
-                var model = await Task.Run(() => pipeline.Fit(splitData.TrainSet));
-                var trainingTime = DateTime.Now - trainStartTime;
-                Console.WriteLine($"Training completed in {trainingTime.TotalSeconds:N1} seconds");
+                var model = await TrainModelAsync(pipeline, splitData.TrainSet);
+
+                var metrics = EvaluateMultiClassClassification(
+                    _mlContext,
+                    model,
+                    splitData.TestSet,
+                    config.TrainingParameters.Algorithm);
 
 
-                var predictions = model.Transform(splitData.TestSet);
-                var metrics = mlContext.MulticlassClassification.Evaluate(
-                    predictions);
+                await SaveModelInfo(
+                    metrics,
+                    dataView,
+                    featureNames,
+                    config,
+                    processedData);
 
 
-                ConsoleHelper.PrintMultiClassClassificationMetrics(config.TrainingParameters.Algorithm, metrics);
-                Console.WriteLine($"Confusion Matrix:\n{metrics.ConfusionMatrix.GetFormattedConfusionTable()}");
-
-                await ModelHelper.CreateModelInfo<MulticlassClassificationMetrics, float>(
-                metrics,
-                dataView,
-                featureNames,
-                config,
-                processedData);
-
-                var modelPath = $"MultiClassClassification_{config.TrainingParameters.Algorithm}_Model.zip";
-                mlContext.Model.Save(model, fixedData.Schema, modelPath);
-                Console.WriteLine($"\nModel saved to: {modelPath}");
+                SaveModel(
+                    _mlContext,
+                    model,
+                    fixedData,
+                    "MultiClassClassification",
+                    config.TrainingParameters.Algorithm);
 
                 return model;
             }
-
             catch (Exception ex)
             {
                 Console.WriteLine($"\nError during model training: {ex.Message}");
@@ -107,6 +90,24 @@ namespace D2G.Iris.ML.Training
                     Console.WriteLine($"Inner Exception: {ex.InnerException.Message}");
                 throw;
             }
+        }
+
+        private IDataView PrepareData(IDataView dataView, string[] featureNames)
+        {
+            var data = _mlContext.Data
+                .CreateEnumerable<ModelInput>(dataView, reuseRowObject: false)
+                .Select(row => new ModelInput
+                {
+                    Features = row.Features,
+                    Label = row.Label
+                })
+                .ToList();
+
+            var schema = SchemaDefinition.Create(typeof(ModelInput));
+            schema["Features"].ColumnType =
+                new VectorDataViewType(NumberDataViewType.Single, featureNames.Length);
+
+            return _mlContext.Data.LoadFromEnumerable(data, schema);
         }
     }
 }

@@ -9,15 +9,11 @@ using D2G.Iris.ML.Core.Interfaces;
 
 namespace D2G.Iris.ML.Training
 {
-    public class RegressionTrainer : IModelTrainer
+    public class RegressionTrainer : BaseModelTrainer
     {
-        private readonly MLContext _mlContext;
-        private readonly TrainerFactory _trainerFactory;
-
         public RegressionTrainer(MLContext mlContext, TrainerFactory trainerFactory)
+            : base(mlContext, trainerFactory)
         {
-            _mlContext = mlContext;
-            _trainerFactory = trainerFactory;
         }
 
         private class RegressionDataPoint
@@ -27,7 +23,7 @@ namespace D2G.Iris.ML.Training
             public float Label { get; set; }
         }
 
-        public async Task<ITransformer> TrainModel(
+        public override async Task<ITransformer> TrainModel(
             MLContext mlContext,
             IDataView dataView,
             string[] featureNames,
@@ -38,46 +34,36 @@ namespace D2G.Iris.ML.Training
             {
                 Console.WriteLine($"\nStarting regression model training using {config.TrainingParameters.Algorithm}...");
 
-                var labelPipeline = mlContext.Transforms.CopyColumns("Label", config.TargetField);
-                var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
+                IDataView preparedData = PrepareData(dataView, featureNames, config.TargetField);
 
-                var dataPoints = mlContext.Data
-                    .CreateEnumerable<RegressionDataPoint>(labeledData, reuseRowObject: false)
-                    .ToList();
-
-                var schemaDef = SchemaDefinition.Create(typeof(RegressionDataPoint));
-                schemaDef[nameof(RegressionDataPoint.Features)].ColumnType = new VectorDataViewType(
-                    NumberDataViewType.Single,
-                    featureNames.Length);
-
-                var typedData = mlContext.Data.LoadFromEnumerable(dataPoints, schemaDef);
-
-                var split = mlContext.Data.TrainTestSplit(
-                    typedData,
-                    testFraction: config.TrainingParameters.TestFraction,
-                    seed: 42);
+                var split = SplitTrainTestData(
+                    _mlContext,
+                    preparedData,
+                    config.TrainingParameters.TestFraction);
 
                 var trainer = _trainerFactory.GetTrainer(
                     config.ModelType,
                     config.TrainingParameters);
 
-                var pipeline = mlContext.Transforms.NormalizeMinMax("Features")
-                    .AppendCacheCheckpoint(mlContext)
+                var pipeline = GetBasePipeline(_mlContext)
                     .Append(trainer);
 
-                var start = DateTime.Now;
-                var model = await Task.Run(() => pipeline.Fit(split.TrainSet));
-                Console.WriteLine($"Training completed in {(DateTime.Now - start).TotalSeconds:N1} seconds");
+                var model = await TrainModelAsync(pipeline, split.TrainSet);
 
-                var predictions = model.Transform(split.TestSet);
-                var metrics = mlContext.Regression.Evaluate(predictions);
-                ConsoleHelper.PrintRegressionMetrics(config.TrainingParameters.Algorithm, metrics);
+                var metrics = EvaluateRegression(
+                    _mlContext,
+                    model,
+                    split.TestSet,
+                    config.TrainingParameters.Algorithm);
 
-                var modelPath = $"Regression_{config.TrainingParameters.Algorithm}_Model.zip";
-                mlContext.Model.Save(model, typedData.Schema, modelPath);
-                Console.WriteLine($"\nModel saved to: {modelPath}");
+                SaveModel(
+                    _mlContext,
+                    model,
+                    preparedData,
+                    "Regression",
+                    config.TrainingParameters.Algorithm);
 
-                await ModelHelper.CreateModelInfo<RegressionMetrics, float>(
+                await SaveModelInfo(
                     metrics,
                     dataView,
                     featureNames,
@@ -91,6 +77,23 @@ namespace D2G.Iris.ML.Training
                 Console.WriteLine($"\nError during regression training: {ex.Message}");
                 throw;
             }
+        }
+
+        private IDataView PrepareData(IDataView dataView, string[] featureNames, string targetField)
+        {
+            var labelPipeline = _mlContext.Transforms.CopyColumns("Label", targetField);
+            var labeledData = labelPipeline.Fit(dataView).Transform(dataView);
+
+            var dataPoints = _mlContext.Data
+                .CreateEnumerable<RegressionDataPoint>(labeledData, reuseRowObject: false)
+                .ToList();
+
+            var schemaDef = SchemaDefinition.Create(typeof(RegressionDataPoint));
+            schemaDef[nameof(RegressionDataPoint.Features)].ColumnType = new VectorDataViewType(
+                NumberDataViewType.Single,
+                featureNames.Length);
+
+            return _mlContext.Data.LoadFromEnumerable(dataPoints, schemaDef);
         }
     }
 }
